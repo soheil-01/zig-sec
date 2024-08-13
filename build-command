@@ -1,2 +1,5 @@
 // make a share library (DLL)
 zig build-lib -dynamic -target x86_64-windows <file>
+
+// make an executable (EXE)
+zig build-exe -target x86_64-windwos <file>

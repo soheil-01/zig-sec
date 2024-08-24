@@ -142,7 +142,7 @@ fn generateUUidOutput(allocator: std.mem.Allocator, shell_code: []const u8) ![][
     return uuid_array.toOwnedSlice();
 }
 
-fn uuidDeobfuscation(allocator: std.mem.Allocator, uuid_array: [][:0]const u8) ![]u8 {
+pub fn uuidDeobfuscation(allocator: std.mem.Allocator, uuid_array: []const [:0]const u8) ![]u8 {
     var shell_code = try std.ArrayList(u8).initCapacity(allocator, uuid_array.len * 16);
     errdefer shell_code.deinit();
 

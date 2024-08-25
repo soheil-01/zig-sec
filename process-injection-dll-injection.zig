@@ -272,7 +272,7 @@ pub fn main() !void {
     try injectDLLToRemoteProcess(allocator, h_process, dll_path);
 }
 
-fn injectDLLToRemoteProcess(allocator: std.mem.Allocator, h_process: HANDLE, dll_path: []const u8) !void {
+pub fn injectDLLToRemoteProcess(allocator: std.mem.Allocator, h_process: HANDLE, dll_path: []const u8) !void {
     const h_kernel32 = win.kernel32.GetModuleHandleW(std.unicode.utf8ToUtf16LeStringLiteral("kernel32.dll")) orelse {
         std.debug.print("[!] GetModuleHandleW Failed With Error: {s}\n", .{@tagName(GetLastError())});
         return error.GetModuleHandleWFailed;
@@ -322,7 +322,7 @@ fn injectDLLToRemoteProcess(allocator: std.mem.Allocator, h_process: HANDLE, dll
     std.debug.print("[+] Done\n", .{});
 }
 
-fn getRemoteProcessHandle(process_name: []const u8) !HANDLE {
+pub fn getRemoteProcessHandle(process_name: []const u8) !HANDLE {
     const h_snapshot = CreateToolhelp32Snapshot(.{ .SNAPPROCESS = 1 }, 0) orelse {
         std.debug.print("[!] CreateToolhelp32Snapshot Failed With Error: {s}\n", .{@tagName(GetLastError())});
         return error.CreateToolhelp32SnapshotFailed;

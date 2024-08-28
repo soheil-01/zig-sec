@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const win = std.os.windows;
 
 export fn printInfo() void {

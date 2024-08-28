@@ -2,50 +2,18 @@
 // python3 -m http.server 8000
 
 const std = @import("std");
-const win = std.os.windows;
+const win = @import("zigwin32").everything;
 
-const WINAPI = win.WINAPI;
-const BOOL = win.BOOL;
-const GetLastError = win.kernel32.GetLastError;
+const INTERNET_FLAG_HYPERLINK = win.INTERNET_FLAG_HYPERLINK;
+const INTERNET_FLAG_IGNORE_CERT_DATE_INVALID = win.INTERNET_FLAG_IGNORE_CERT_DATE_INVALID;
+const INTERNET_OPTION_SETTINGS_CHANGED = win.INTERNET_OPTION_SETTINGS_CHANGED;
 
-extern "wininet" fn InternetOpenW(
-    lpszAgent: ?[*:0]const u16,
-    dwAccessType: u32,
-    lpszProxy: ?[*:0]const u16,
-    lpszProxyBypass: ?[*:0]const u16,
-    dwFlags: u32,
-) callconv(WINAPI) ?*anyopaque;
-
-extern "wininet" fn InternetOpenUrlW(
-    hInternet: ?*anyopaque,
-    lpszUrl: ?[*:0]const u16,
-    lpszHeaders: ?[*:0]const u16,
-    dwHeadersLength: u32,
-    dwFlags: u32,
-    dwContext: usize,
-) callconv(WINAPI) ?*anyopaque;
-
-extern "wininet" fn InternetReadFile(
-    hFile: ?*anyopaque,
-    lpBuffer: ?*anyopaque,
-    dwNumberOfBytesToRead: u32,
-    lpdwNumberOfBytesRead: ?*u32,
-) callconv(WINAPI) BOOL;
-
-extern "wininet" fn InternetCloseHandle(
-    hInternet: ?*anyopaque,
-) callconv(WINAPI) BOOL;
-
-extern "wininet" fn InternetSetOptionW(
-    hInternet: ?*anyopaque,
-    dwOption: u32,
-    lpBuffer: ?*anyopaque,
-    dwBufferLength: u32,
-) callconv(WINAPI) BOOL;
-
-const INTERNET_FLAG_HYPERLINK: u32 = 1024;
-const INTERNET_FLAG_IGNORE_CERT_DATE_INVALID: u32 = 8192;
-const INTERNET_OPTION_SETTINGS_CHANGED: u32 = 39;
+const GetLastError = win.GetLastError;
+const InternetOpenW = win.InternetOpenW;
+const InternetOpenUrlW = win.InternetOpenUrlW;
+const InternetReadFile = win.InternetReadFile;
+const InternetCloseHandle = win.InternetCloseHandle;
+const InternetSetOptionW = win.InternetSetOptionW;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};

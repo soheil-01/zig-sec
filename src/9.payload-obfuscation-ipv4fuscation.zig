@@ -1,33 +1,11 @@
 const std = @import("std");
-const win = std.os.windows;
+const win = @import("zigwin32").everything;
 const assert = std.debug.assert;
 
-const WINAPI = win.WINAPI;
-const BOOLEAN = win.BOOLEAN;
-const NTSTATUS = win.NTSTATUS;
-const LPSTR = win.LPSTR;
-const IN_ADDR = extern struct {
-    S_un: extern union {
-        S_un_b: extern struct {
-            s_b1: u8,
-            s_b2: u8,
-            s_b3: u8,
-            s_b4: u8,
-        },
-        S_un_w: extern struct {
-            s_w1: u16,
-            s_w2: u16,
-        },
-        S_addr: u32,
-    },
-};
+const PSTR = win.PSTR;
+const IN_ADDR = win.IN_ADDR;
 
-extern "ntdll" fn RtlIpv4StringToAddressA(
-    S: ?[*:0]const u8,
-    Strict: BOOLEAN,
-    Terminator: ?*?LPSTR,
-    Addr: ?*IN_ADDR,
-) callconv(WINAPI) NTSTATUS;
+const RtlIpv4StringToAddressA = win.RtlIpv4StringToAddressA;
 
 fn generateIpv4(allocator: std.mem.Allocator, a: u8, b: u8, c: u8, d: u8) ![:0]u8 {
     return std.fmt.allocPrintZ(allocator, "{d}.{d}.{d}.{d}", .{ a, b, c, d });
@@ -53,11 +31,11 @@ fn ipv4Deobfuscation(allocator: std.mem.Allocator, ipv4_array: [][:0]const u8) !
 
     for (ipv4_array) |ipv4| {
         var addr: IN_ADDR = undefined;
-        var terminator: ?LPSTR = null;
+        var terminator: ?PSTR = null;
 
-        const status = RtlIpv4StringToAddressA(ipv4, win.FALSE, &terminator, &addr);
-        if (status != .SUCCESS) {
-            std.debug.print("IPv4DeobfuscationFailed with error: {s}\n", .{@tagName(status)});
+        const status = RtlIpv4StringToAddressA(ipv4, 0, &terminator, &addr);
+        if (status != 0) {
+            std.debug.print("IPv4Deobfuscation Failed With Error Code: {d}\n", .{status});
             return error.IPv4DeobfuscationFailed;
         }
 

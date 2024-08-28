@@ -1,162 +1,30 @@
 const std = @import("std");
-const windows = std.os.windows;
-const NTSTATUS = windows.NTSTATUS;
-const WINAPI = windows.WINAPI;
-const LPSTR = windows.LPSTR;
+const win = @import("zigwin32").everything;
+
+const NTSTATUS = win.NTSTATUS;
+const WINAPI = win.WINAPI;
+const LPSTR = win.LPSTR;
 
 const KEYSIZE: u32 = 32;
 const IVSIZE: u32 = 16;
 
-// from zigwin32 library
-
-const BCRYPT_HANDLE = isize;
-const BCRYPT_KEY_HANDLE = BCRYPT_HANDLE;
-const BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS = packed struct(u32) {
-    PROV_DISPATCH: u1 = 0,
-    _1: u1 = 0,
-    _2: u1 = 0,
-    ALG_HANDLE_HMAC_FLAG: u1 = 0,
-    _4: u1 = 0,
-    HASH_REUSABLE_FLAG: u1 = 0,
-    _6: u1 = 0,
-    _7: u1 = 0,
-    _8: u1 = 0,
-    _9: u1 = 0,
-    _10: u1 = 0,
-    _11: u1 = 0,
-    _12: u1 = 0,
-    _13: u1 = 0,
-    _14: u1 = 0,
-    _15: u1 = 0,
-    _16: u1 = 0,
-    _17: u1 = 0,
-    _18: u1 = 0,
-    _19: u1 = 0,
-    _20: u1 = 0,
-    _21: u1 = 0,
-    _22: u1 = 0,
-    _23: u1 = 0,
-    _24: u1 = 0,
-    _25: u1 = 0,
-    _26: u1 = 0,
-    _27: u1 = 0,
-    _28: u1 = 0,
-    _29: u1 = 0,
-    _30: u1 = 0,
-    _31: u1 = 0,
-};
+const BCRYPT_HANDLE = win.BCRYPT_HANDLE;
+const BCRYPT_KEY_HANDLE = win.BCRYPT_KEY_HANDLE;
 
 const BCRYPT_AES_ALGORITHM = std.unicode.utf8ToUtf16LeStringLiteral("AES");
-
-extern "bcrypt" fn BCryptOpenAlgorithmProvider(
-    phAlgorithm: ?*BCRYPT_HANDLE,
-    pszAlgId: ?[*:0]const u16,
-    pszImplementation: ?[*:0]const u16,
-    dwFlags: BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS,
-) callconv(windows.WINAPI) windows.NTSTATUS;
-
 const BCRYPT_OBJECT_LENGTH = std.unicode.utf8ToUtf16LeStringLiteral("ObjectLength");
 const BCRYPT_BLOCK_LENGTH = std.unicode.utf8ToUtf16LeStringLiteral("BlockLength");
-
-extern "bcrypt" fn BCryptGetProperty(
-    hObject: BCRYPT_HANDLE,
-    pszProperty: ?[*:0]const u16,
-    pbOutput: ?*u8,
-    cbOutput: u32,
-    pcbResult: ?*u32,
-    dwFlags: u32,
-) callconv(WINAPI) NTSTATUS;
-
 const BCRYPT_CHAINING_MODE = std.unicode.utf8ToUtf16LeStringLiteral("ChainingMode");
 const BCRYPT_CHAIN_MODE_CBC = std.unicode.utf8ToUtf16LeStringLiteral("ChainingModeCBC");
 
-extern "bcrypt" fn BCryptSetProperty(
-    hObject: BCRYPT_HANDLE,
-    pszProperty: ?[*:0]const u16,
-    pbInput: ?*u8,
-    cbInput: u32,
-    dwFlags: u32,
-) callconv(WINAPI) NTSTATUS;
-
-extern "bcrypt" fn BCryptGenerateSymmetricKey(
-    hAlgorithm: BCRYPT_HANDLE,
-    phKey: ?*BCRYPT_KEY_HANDLE,
-    pbKeyObject: ?*u8,
-    cbKeyObject: u32,
-    pbSecret: ?*u8,
-    cbSecret: u32,
-    dwFlags: u32,
-) callconv(WINAPI) NTSTATUS;
-
-const NCRYPT_FLAGS = packed struct(u32) {
-    BCRYPT_PAD_NONE: u1 = 0,
-    BCRYPT_PAD_PKCS1: u1 = 0,
-    BCRYPT_PAD_OAEP: u1 = 0,
-    BCRYPT_PAD_PSS: u1 = 0,
-    _4: u1 = 0,
-    NCRYPT_MACHINE_KEY_FLAG: u1 = 0,
-    NCRYPT_SILENT_FLAG: u1 = 0,
-    NCRYPT_OVERWRITE_KEY_FLAG: u1 = 0,
-    _8: u1 = 0,
-    NCRYPT_WRITE_KEY_TO_LEGACY_STORE_FLAG: u1 = 0,
-    _10: u1 = 0,
-    _11: u1 = 0,
-    _12: u1 = 0,
-    _13: u1 = 0,
-    _14: u1 = 0,
-    _15: u1 = 0,
-    _16: u1 = 0,
-    _17: u1 = 0,
-    _18: u1 = 0,
-    _19: u1 = 0,
-    _20: u1 = 0,
-    _21: u1 = 0,
-    _22: u1 = 0,
-    _23: u1 = 0,
-    _24: u1 = 0,
-    _25: u1 = 0,
-    _26: u1 = 0,
-    _27: u1 = 0,
-    _28: u1 = 0,
-    _29: u1 = 0,
-    NCRYPT_PERSIST_ONLY_FLAG: u1 = 0,
-    NCRYPT_PERSIST_FLAG: u1 = 0,
-};
-
-extern "bcrypt" fn BCryptEncrypt(
-    hKey: BCRYPT_KEY_HANDLE,
-    pbInput: ?*u8,
-    cbInput: u32,
-    pPaddingInfo: ?*anyopaque,
-    pbIV: ?*u8,
-    cbIV: u32,
-    pbOutput: ?*u8,
-    cbOutput: u32,
-    pcbResult: ?*u32,
-    dwFlags: NCRYPT_FLAGS,
-) callconv(WINAPI) NTSTATUS;
-
-extern "bcrypt" fn BCryptDecrypt(
-    hKey: BCRYPT_KEY_HANDLE,
-    pbInput: ?*u8,
-    cbInput: u32,
-    pPaddingInfo: ?*anyopaque,
-    pbIV: ?*u8,
-    cbIV: u32,
-    pbOutput: ?*u8,
-    cbOutput: u32,
-    pcbResult: ?*u32,
-    dwFlags: NCRYPT_FLAGS,
-) callconv(WINAPI) NTSTATUS;
-
-extern "bcrypt" fn BCryptDestroyKey(
-    hKey: BCRYPT_KEY_HANDLE,
-) callconv(WINAPI) NTSTATUS;
-
-extern "bcrypt" fn BCryptCloseAlgorithmProvider(
-    hAlgorithm: BCRYPT_HANDLE,
-    dwFlags: u32,
-) callconv(WINAPI) NTSTATUS;
+const BCryptOpenAlgorithmProvider = win.BCryptOpenAlgorithmProvider;
+const BCryptGetProperty = win.BCryptGetProperty;
+const BCryptSetProperty = win.BCryptSetProperty;
+const BCryptGenerateSymmetricKey = win.BCryptGenerateSymmetricKey;
+const BCryptEncrypt = win.BCryptEncrypt;
+const BCryptDecrypt = win.BCryptDecrypt;
+const BCryptDestroyKey = win.BCryptDestroyKey;
+const BCryptCloseAlgorithmProvider = win.BCryptCloseAlgorithmProvider;
 
 fn installAesEncryption(allocator: std.mem.Allocator, plain_text: []const u8, key: [KEYSIZE:0]u8, iv: ?[IVSIZE:0]u8) ![]u8 {
     const plain_text_size: u32 = @intCast(plain_text.len);
@@ -176,8 +44,8 @@ fn installAesEncryption(allocator: std.mem.Allocator, plain_text: []const u8, ke
         null,
         .{},
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptOpenAlgorithmProvider Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptOpenAlgorithmProvider Failed With Error Code: {d}\n", .{status});
         return error.BCryptOpenAlgorithmProvider;
     }
     defer _ = BCryptCloseAlgorithmProvider(h_algorithm, 0);
@@ -190,8 +58,8 @@ fn installAesEncryption(allocator: std.mem.Allocator, plain_text: []const u8, ke
         &cb_result,
         0,
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptGetProperty[1] Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptGetProperty[1] Failed With Error Code: {d}\n", .{status});
         return error.BCryptGetPropertyFailed;
     }
 
@@ -203,8 +71,8 @@ fn installAesEncryption(allocator: std.mem.Allocator, plain_text: []const u8, ke
         &cb_result,
         0,
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptGetProperty[2] Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptGetProperty[2] Failed With Error Code: {d}\n", .{status});
         return error.BCryptGetPropertyFailed;
     }
 
@@ -217,8 +85,8 @@ fn installAesEncryption(allocator: std.mem.Allocator, plain_text: []const u8, ke
         BCRYPT_CHAIN_MODE_CBC.len,
         0,
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptSetProperty Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptSetProperty Failed With Error Code: {d}\n", .{status});
         return error.BCryptSetPropertyFailed;
     }
 
@@ -236,8 +104,8 @@ fn installAesEncryption(allocator: std.mem.Allocator, plain_text: []const u8, ke
         KEYSIZE,
         0,
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptGenerateSymmetricKey Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptGenerateSymmetricKey Failed With Error Code: {d}\n", .{status});
         return error.BCryptGenerateSymmetricKeyFailed;
     }
     defer _ = BCryptDestroyKey(h_key_handle);
@@ -254,8 +122,8 @@ fn installAesEncryption(allocator: std.mem.Allocator, plain_text: []const u8, ke
         &cb_cipher_text,
         .{ .BCRYPT_PAD_NONE = 1 },
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptEncrypt[1] Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptEncrypt[1] Failed With Error Code: {d}\n", .{status});
         return error.BCryptEncryptFailed;
     }
 
@@ -273,8 +141,8 @@ fn installAesEncryption(allocator: std.mem.Allocator, plain_text: []const u8, ke
         &cb_result,
         .{ .BCRYPT_PAD_NONE = 1 },
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptEncrypt[2] Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptEncrypt[2] Failed With Error Code: {d}\n", .{status});
         return error.BCryptEncryptFailed;
     }
 
@@ -299,8 +167,8 @@ fn installAesDecryption(allocator: std.mem.Allocator, cipher_text: []const u8, k
         null,
         .{},
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptOpenAlgorithmProvider Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptOpenAlgorithmProvider Failed With Error Code: {d}\n", .{status});
         return error.BCryptOpenAlgorithmProvider;
     }
     defer _ = BCryptCloseAlgorithmProvider(h_algorithm, 0);
@@ -313,8 +181,8 @@ fn installAesDecryption(allocator: std.mem.Allocator, cipher_text: []const u8, k
         &cb_result,
         0,
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptGetProperty[1] Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptGetProperty[1] Failed With Error Code: {d}\n", .{status});
         return error.BCryptGetPropertyFailed;
     }
 
@@ -326,8 +194,8 @@ fn installAesDecryption(allocator: std.mem.Allocator, cipher_text: []const u8, k
         &cb_result,
         0,
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptGetProperty[2] Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptGetProperty[2] Failed With Error Code: {d}\n", .{status});
         return error.BCryptGetPropertyFailed;
     }
 
@@ -340,8 +208,8 @@ fn installAesDecryption(allocator: std.mem.Allocator, cipher_text: []const u8, k
         BCRYPT_CHAIN_MODE_CBC.len,
         0,
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptSetProperty Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptSetProperty Failed With Error Code: {d}\n", .{status});
         return error.BCryptSetPropertyFailed;
     }
 
@@ -359,8 +227,8 @@ fn installAesDecryption(allocator: std.mem.Allocator, cipher_text: []const u8, k
         KEYSIZE,
         0,
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptGenerateSymmetricKey Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptGenerateSymmetricKey Failed With Error Code: {d}\n", .{status});
         return error.BCryptGenerateSymmetricKeyFailed;
     }
     defer _ = BCryptDestroyKey(h_key_handle);
@@ -377,8 +245,8 @@ fn installAesDecryption(allocator: std.mem.Allocator, cipher_text: []const u8, k
         &cb_plain_text,
         .{ .BCRYPT_PAD_NONE = 1 },
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptDecrypt[1] Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptDecrypt[1] Failed With Error Code: {d}\n", .{status});
         return error.BCryptDecryptFailed;
     }
 
@@ -396,8 +264,8 @@ fn installAesDecryption(allocator: std.mem.Allocator, cipher_text: []const u8, k
         &cb_result,
         .{ .BCRYPT_PAD_NONE = 1 },
     );
-    if (status != .SUCCESS) {
-        std.debug.print("[!] BCryptDecrypt[2] Failed With Error: {s}\n", .{@tagName(status)});
+    if (status != 0) {
+        std.debug.print("[!] BCryptDecrypt[2] Failed With Error Code: {d}\n", .{status});
         return error.BCryptDecryptFailed;
     }
 

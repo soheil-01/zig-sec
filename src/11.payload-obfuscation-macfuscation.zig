@@ -1,33 +1,11 @@
 const std = @import("std");
-const win = std.os.windows;
+const win = @import("zigwin32").everything;
 const assert = std.debug.assert;
 
-const WINAPI = win.WINAPI;
-const BOOLEAN = win.BOOLEAN;
-const NTSTATUS = win.NTSTATUS;
-const LPSTR = win.LPSTR;
-const DL_OUI = extern union {
-    Byte: [3]u8,
-    Anonymous: extern struct {
-        _bitfield: u8,
-    },
-};
-const DL_EI48 = extern union {
-    Byte: [3]u8,
-};
-const DL_EUI48 = extern union {
-    Byte: [6]u8,
-    Anonymous: extern struct {
-        Oui: DL_OUI,
-        Ei48: DL_EI48,
-    },
-};
+const PSTR = win.PSTR;
+const DL_EUI48 = win.DL_EUI48;
 
-extern "ntdll" fn RtlEthernetStringToAddressA(
-    S: ?[*:0]const u8,
-    Terminator: ?*?LPSTR,
-    Addr: ?*DL_EUI48,
-) callconv(WINAPI) NTSTATUS;
+const RtlEthernetStringToAddressA = win.RtlEthernetStringToAddressA;
 
 fn generateMac(allocator: std.mem.Allocator, a: u8, b: u8, c: u8, d: u8, e: u8, f: u8) ![:0]u8 {
     return std.fmt.allocPrintZ(allocator, "{X:0>2}-{X:0>2}-{X:0>2}-{X:0>2}-{X:0>2}-{X:0>2}", .{ a, b, c, d, e, f });
@@ -53,11 +31,11 @@ fn macDeobfuscation(allocator: std.mem.Allocator, mac_array: [][:0]const u8) ![]
 
     for (mac_array) |mac| {
         var addr: DL_EUI48 = undefined;
-        var terminator: ?LPSTR = null;
+        var terminator: ?PSTR = null;
 
         const status = RtlEthernetStringToAddressA(mac, &terminator, &addr);
-        if (status != .SUCCESS) {
-            std.debug.print("MacDeobfuscationFailed with error: {s}\n", .{@tagName(status)});
+        if (status != 0) {
+            std.debug.print("MacDeobfuscation Failed With Error Code: {d}\n", .{status});
             return error.MacDeobfuscationFailed;
         }
 

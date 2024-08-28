@@ -1,6 +1,6 @@
 const std = @import("std");
 const c = @cImport({
-    @cInclude("aes.h");
+    @cInclude("aes/aes.h");
 });
 
 const KEYSIZE: u32 = 32;

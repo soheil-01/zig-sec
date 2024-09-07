@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const RC4 = struct {
+pub const RC4 = struct {
     state: [256]u8 = undefined,
     i: u8 = 0,
     j: u8 = 0,
@@ -77,5 +77,5 @@ pub fn main() !void {
 
     var rc4 = RC4.init("maldev");
     const encrypted_shell_code = rc4.encrypt(&buf, &shell_code);
-    std.debug.print("Encrypted shell code: {x}\n", .{encrypted_shell_code});
+    std.debug.print("Encrypted shell code: {any}\n", .{encrypted_shell_code});
 }

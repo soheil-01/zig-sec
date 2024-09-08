@@ -25,7 +25,7 @@ fn generateIpv4Output(allocator: std.mem.Allocator, shell_code: []const u8) ![][
     return ipv4_array.toOwnedSlice();
 }
 
-fn ipv4Deobfuscation(allocator: std.mem.Allocator, ipv4_array: [][:0]const u8) ![]u8 {
+pub fn ipv4Deobfuscation(allocator: std.mem.Allocator, ipv4_array: []const [:0]const u8) ![]u8 {
     var shell_code = try std.ArrayList(u8).initCapacity(allocator, ipv4_array.len * 4);
     errdefer shell_code.deinit();
 

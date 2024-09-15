@@ -7,6 +7,13 @@ pub fn build(b: *std.Build) void {
 
     const zigwin32_module = b.dependency("zigwin32", .{}).module("zigwin32");
 
+    const module = b.addModule("zig-sec", .{
+        .root_source_file = b.path("src/utils/zig-sec.zig"),
+        .imports = &.{
+            .{ .name = "zigwin32", .module = zigwin32_module },
+        },
+    });
+
     const tiny_aes_lib = b.addStaticLibrary(.{
         .name = "aes",
         .optimize = .Debug,
@@ -45,6 +52,7 @@ pub fn build(b: *std.Build) void {
                 .optimize = optimize,
             });
             exe.root_module.addImport("zigwin32", zigwin32_module);
+            exe.root_module.addImport("zig-sec", module);
             exe.addIncludePath(b.path("lib"));
 
             if (use_aes_lib) {

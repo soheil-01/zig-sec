@@ -1,5 +1,7 @@
 const std = @import("std");
 const win = @import("zigwin32").everything;
+const common = @import("../common.zig");
+
 const assert = std.debug.assert;
 
 const PSTR = win.PSTR;
@@ -12,14 +14,15 @@ fn generateIpv6(allocator: std.mem.Allocator, a: u8, b: u8, c: u8, d: u8, e: u8,
 }
 
 pub fn obfuscate(allocator: std.mem.Allocator, shell_code: []const u8) ![][:0]const u8 {
-    assert(shell_code.len % 16 == 0);
+    const padded_shell_code = try common.paddBuffer(allocator, shell_code, 16);
+    defer allocator.free(padded_shell_code);
 
-    var ipv6_array = try std.ArrayList([:0]const u8).initCapacity(allocator, shell_code.len / 16);
+    var ipv6_array = try std.ArrayList([:0]const u8).initCapacity(allocator, padded_shell_code.len / 16);
     errdefer freeIpv6Array(allocator, ipv6_array.items);
 
     var i: usize = 0;
-    while (i < shell_code.len) : (i += 16) {
-        const ipv6 = try generateIpv6(allocator, shell_code[i], shell_code[i + 1], shell_code[i + 2], shell_code[i + 3], shell_code[i + 4], shell_code[i + 5], shell_code[i + 6], shell_code[i + 7], shell_code[i + 8], shell_code[i + 9], shell_code[i + 10], shell_code[i + 11], shell_code[i + 12], shell_code[i + 13], shell_code[i + 14], shell_code[i + 15]);
+    while (i < padded_shell_code.len) : (i += 16) {
+        const ipv6 = try generateIpv6(allocator, padded_shell_code[i], padded_shell_code[i + 1], padded_shell_code[i + 2], padded_shell_code[i + 3], padded_shell_code[i + 4], padded_shell_code[i + 5], padded_shell_code[i + 6], padded_shell_code[i + 7], padded_shell_code[i + 8], padded_shell_code[i + 9], padded_shell_code[i + 10], padded_shell_code[i + 11], padded_shell_code[i + 12], padded_shell_code[i + 13], padded_shell_code[i + 14], padded_shell_code[i + 15]);
         ipv6_array.appendAssumeCapacity(ipv6);
     }
 

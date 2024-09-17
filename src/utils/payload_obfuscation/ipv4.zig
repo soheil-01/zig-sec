@@ -1,5 +1,7 @@
 const std = @import("std");
 const win = @import("zigwin32").everything;
+const common = @import("../common.zig");
+
 const assert = std.debug.assert;
 
 const PSTR = win.PSTR;
@@ -12,14 +14,15 @@ fn generateIpv4(allocator: std.mem.Allocator, a: u8, b: u8, c: u8, d: u8) ![:0]u
 }
 
 pub fn obfuscate(allocator: std.mem.Allocator, shell_code: []const u8) ![][:0]const u8 {
-    assert(shell_code.len % 4 == 0);
+    const padded_shell_code = try common.paddBuffer(allocator, shell_code, 4);
+    defer allocator.free(padded_shell_code);
 
-    var ipv4_array = try std.ArrayList([:0]const u8).initCapacity(allocator, shell_code.len / 4);
+    var ipv4_array = try std.ArrayList([:0]const u8).initCapacity(allocator, padded_shell_code.len / 4);
     errdefer freeIpv4Array(allocator, ipv4_array.items);
 
     var i: usize = 0;
-    while (i < shell_code.len) : (i += 4) {
-        const ipv4 = try generateIpv4(allocator, shell_code[i], shell_code[i + 1], shell_code[i + 2], shell_code[i + 3]);
+    while (i < padded_shell_code.len) : (i += 4) {
+        const ipv4 = try generateIpv4(allocator, padded_shell_code[i], padded_shell_code[i + 1], padded_shell_code[i + 2], padded_shell_code[i + 3]);
         ipv4_array.appendAssumeCapacity(ipv4);
     }
 

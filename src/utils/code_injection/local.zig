@@ -4,6 +4,7 @@ const win = @import("zigwin32").everything;
 const PAGE_PROTECTION_FLAGS = win.PAGE_PROTECTION_FLAGS;
 const LPTHREAD_START_ROUTINE = win.LPTHREAD_START_ROUTINE;
 const INFINITE = win.INFINITE;
+const SECURITY_ATTRIBUTES = win.SECURITY_ATTRIBUTES;
 
 const VirtualAlloc = win.VirtualAlloc;
 const VirtualProtect = win.VirtualProtect;
@@ -29,7 +30,7 @@ pub fn allocateMemory(data: []const u8) !*anyopaque {
 }
 
 pub fn allocateExecutableMemory(data: []const u8) !*anyopaque {
-    const region = allocateMemory(data);
+    const region = try allocateMemory(data);
 
     var old_protection: PAGE_PROTECTION_FLAGS = undefined;
     if (VirtualProtect(
@@ -64,4 +65,11 @@ pub fn executeInNewThread(start_address: LPTHREAD_START_ROUTINE, parameter: ?*an
     defer _ = CloseHandle(h_thread);
 
     _ = WaitForSingleObject(h_thread, INFINITE);
+}
+
+pub fn injectShellCodeToProcess(shell_code: []const u8) !void {
+    const shell_code_region = try allocateExecutableMemory(shell_code);
+    defer _ = freeVirtualMemory(shell_code_region);
+
+    try executeInNewThread(@ptrCast(shell_code_region), null);
 }

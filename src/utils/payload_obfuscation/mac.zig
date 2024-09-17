@@ -1,5 +1,7 @@
 const std = @import("std");
 const win = @import("zigwin32").everything;
+const common = @import("../common.zig");
+
 const assert = std.debug.assert;
 
 const PSTR = win.PSTR;
@@ -12,14 +14,15 @@ fn generateMac(allocator: std.mem.Allocator, a: u8, b: u8, c: u8, d: u8, e: u8, 
 }
 
 pub fn obfuscate(allocator: std.mem.Allocator, shell_code: []const u8) ![][:0]const u8 {
-    assert(shell_code.len % 6 == 0);
+    const padded_shell_code = try common.paddBuffer(allocator, shell_code, 6);
+    defer allocator.free(padded_shell_code);
 
-    var mac_array = try std.ArrayList([:0]const u8).initCapacity(allocator, shell_code.len / 6);
+    var mac_array = try std.ArrayList([:0]const u8).initCapacity(allocator, padded_shell_code.len / 6);
     errdefer freeMacArray(allocator, mac_array.items);
 
     var i: usize = 0;
-    while (i < shell_code.len) : (i += 6) {
-        const mac = try generateMac(allocator, shell_code[i], shell_code[i + 1], shell_code[i + 2], shell_code[i + 3], shell_code[i + 4], shell_code[i + 5]);
+    while (i < padded_shell_code.len) : (i += 6) {
+        const mac = try generateMac(allocator, padded_shell_code[i], padded_shell_code[i + 1], padded_shell_code[i + 2], padded_shell_code[i + 3], padded_shell_code[i + 4], padded_shell_code[i + 5]);
         mac_array.appendAssumeCapacity(mac);
     }
 

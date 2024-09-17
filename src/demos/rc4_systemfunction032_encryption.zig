@@ -57,9 +57,8 @@ pub fn main() !void {
 
     const status = SystemFunction032(&data, &key);
 
-    if (status == .SUCCESS) {
-        std.debug.print("Encrypted shell code: {any}\n", .{shell_code});
-    } else {
-        std.debug.print("Failed to encrypt shell code: {s}\n", .{@tagName(status)});
+    switch (status) {
+        .SUCCESS => std.debug.print("Encrypted shell code: {any}\n", .{shell_code}),
+        else => std.debug.print("Failed to encrypt shell code: {s}\n", .{@tagName(status)}),
     }
 }

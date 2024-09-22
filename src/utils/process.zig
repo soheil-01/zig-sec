@@ -1,11 +1,16 @@
 const std = @import("std");
 const win = @import("zigwin32").everything;
 
+const getEnvironmentVariable = @import("env.zig").getEnvironmentVariable;
+
 const HANDLE = win.HANDLE;
 const PROCESSENTRY32 = win.PROCESSENTRY32;
 const PROCESS_ALL_ACCESS = win.PROCESS_ALL_ACCESS;
 const HINSTANCE = win.HINSTANCE;
 const SYSTEM_PROCESS_INFORMATION = win.SYSTEM_PROCESS_INFORMATION;
+const STARTUPINFOA = win.STARTUPINFOA;
+const PROCESS_INFORMATION = win.PROCESS_INFORMATION;
+const PROCESS_CREATION_FLAGS = win.PROCESS_CREATION_FLAGS;
 
 const CreateToolhelp32Snapshot = win.CreateToolhelp32Snapshot;
 const Process32First = win.Process32First;
@@ -17,6 +22,7 @@ const GetModuleBaseNameA = win.K32GetModuleBaseNameA;
 const CloseHandle = win.CloseHandle;
 const GetLastError = win.GetLastError;
 const NtQuerySystemInformation = win.NtQuerySystemInformation;
+const CreateProcessA = win.CreateProcessA;
 
 pub fn openProcessByName(process_name: []const u8) !struct { h_process: HANDLE, process_id: u32 } {
     const h_snapshot = CreateToolhelp32Snapshot(.{ .SNAPPROCESS = 1 }, 0) orelse {
@@ -231,4 +237,53 @@ pub fn openProcessByName3(allocator: std.mem.Allocator, process_name: []const u8
     }
 
     return null;
+}
+
+const ProcessCreationMode = enum {
+    Suspended,
+    Debugged,
+};
+
+pub fn createSuspendedProcess(allocator: std.mem.Allocator, process_name: []const u8, mode: ProcessCreationMode) !struct { h_process: HANDLE, process_id: u32, h_thread: HANDLE } {
+    var buf: [1024:0]u8 = undefined;
+    buf[1023] = 0;
+    const win_dir = try getEnvironmentVariable("WINDIR", &buf);
+
+    const path = try std.fmt.allocPrintZ(allocator, "{s}\\System32\\{s}", .{ win_dir, process_name });
+    defer allocator.free(path);
+
+    var startup_info = std.mem.zeroes(STARTUPINFOA);
+    var process_info: PROCESS_INFORMATION = undefined;
+
+    const creation_mode: PROCESS_CREATION_FLAGS = switch (mode) {
+        .Suspended => .{ .CREATE_SUSPENDED = 1 },
+        .Debugged => .{ .DEBUG_PROCESS = 1 },
+    };
+
+    if (CreateProcessA(
+        null,
+        path,
+        null,
+        null,
+        0,
+        creation_mode,
+        null,
+        null,
+        &startup_info,
+        &process_info,
+    ) == 0) {
+        std.debug.print("[!] CreateProcessA Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.CreateProcessAFailed;
+    }
+
+    if (process_info.hProcess == null or process_info.hThread == null or process_info.dwProcessId == 0 or process_info.dwThreadId == 0) {
+        std.debug.print("[!] CreateProcessA Succeeded But Returned Invalid Process Info\n", .{});
+        return error.InvalidProcessInfo;
+    }
+
+    return .{
+        .h_process = process_info.hProcess.?,
+        .process_id = process_info.dwProcessId,
+        .h_thread = process_info.hThread.?,
+    };
 }

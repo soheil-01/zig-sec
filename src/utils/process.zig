@@ -1,8 +1,6 @@
 const std = @import("std");
 const win = @import("zigwin32").everything;
 
-const getEnvironmentVariable = @import("env.zig").getEnvironmentVariable;
-
 const HANDLE = win.HANDLE;
 const PROCESSENTRY32 = win.PROCESSENTRY32;
 const PROCESS_ALL_ACCESS = win.PROCESS_ALL_ACCESS;
@@ -251,9 +249,8 @@ const ProcessCreationMode = enum {
 };
 
 pub fn createSuspendedProcess(allocator: std.mem.Allocator, process_name: []const u8, mode: ProcessCreationMode) !struct { h_process: HANDLE, process_id: u32, h_thread: HANDLE } {
-    var buf: [1024:0]u8 = undefined;
-    buf[1023] = 0;
-    const win_dir = try getEnvironmentVariable("WINDIR", &buf);
+    const win_dir = try std.process.getEnvVarOwned(allocator, "WINDIR");
+    defer allocator.free(win_dir);
 
     const path = try std.fmt.allocPrintZ(allocator, "{s}\\System32\\{s}", .{ win_dir, process_name });
     defer allocator.free(path);
@@ -296,9 +293,8 @@ pub fn createSuspendedProcess(allocator: std.mem.Allocator, process_name: []cons
 
 // TODO: Got a segmentation fault error due to an unknown reason
 pub fn createPPidSpoofedProcess(allocator: std.mem.Allocator, h_parent_process: HANDLE, process_name: []const u8) !struct { h_process: HANDLE, process_id: u32, h_thread: HANDLE } {
-    var buf: [1024:0]u8 = undefined;
-    buf[1023] = 0;
-    const win_dir = try getEnvironmentVariable("WINDIR", &buf);
+    const win_dir = try std.process.getEnvVarOwned(allocator, "WINDIR");
+    defer allocator.free(win_dir);
 
     const path = try std.fmt.allocPrintZ(allocator, "{s}\\System32\\{s}", .{ win_dir, process_name });
     defer allocator.free(path);

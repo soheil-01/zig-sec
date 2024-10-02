@@ -1,5 +1,6 @@
 const std = @import("std");
 const win = @import("zigwin32").everything;
+const writeToTargetProcess = @import("../process.zig").writeToTargetProcess;
 const loadFunction = @import("../common.zig").loadFunction;
 
 const HANDLE = win.HANDLE;
@@ -11,7 +12,6 @@ const PAGE_EXECUTE_READWRITE = win.PAGE_EXECUTE_READWRITE;
 
 const VirtualAllocEx = win.VirtualAllocEx;
 const VirtualFreeEx = win.VirtualFreeEx;
-const WriteProcessMemory = win.WriteProcessMemory;
 const VirtualProtectEx = win.VirtualProtectEx;
 const GetLastError = win.GetLastError;
 const CreateRemoteThread = win.CreateRemoteThread;
@@ -39,17 +39,12 @@ pub fn allocateMemory(comptime T: type, h_process: HANDLE, data: []const T) !*an
         return error.VirtualAllocExFailed;
     };
 
-    var num_of_bytes_written: usize = undefined;
-    if (WriteProcessMemory(
+    try writeToTargetProcess(
         h_process,
         region,
-        data.ptr,
+        @ptrCast(data.ptr),
         data_size,
-        &num_of_bytes_written,
-    ) == 0 or num_of_bytes_written != data_size) {
-        std.debug.print("[!] WriteProcessMemory Failed With Error: {s}\n", .{@tagName(GetLastError())});
-        return error.WriteProcessMemoryFailed;
-    }
+    );
 
     return region;
 }
@@ -182,17 +177,12 @@ pub fn injectShellCode(h_process: HANDLE, address: *anyopaque, shell_code: []con
         return error.VirtualProtectExFailed;
     }
 
-    var num_of_bytes_written: usize = 0;
-    if (WriteProcessMemory(
+    try writeToTargetProcess(
         h_process,
         address,
-        shell_code.ptr,
+        @ptrCast(shell_code.ptr),
         shell_code.len,
-        &num_of_bytes_written,
-    ) == 0 or num_of_bytes_written != shell_code.len) {
-        std.debug.print("[!] WriteProcessMemory Failed With Error: {s}\n", .{@tagName(GetLastError())});
-        return error.WriteProcessMemoryFailed;
-    }
+    );
 
     if (VirtualProtectEx(
         h_process,

@@ -12,6 +12,9 @@ const PROCESS_CREATION_FLAGS = win.PROCESS_CREATION_FLAGS;
 const STARTUPINFOEXA = win.STARTUPINFOEXA;
 const LPPROC_THREAD_ATTRIBUTE_LIST = win.LPPROC_THREAD_ATTRIBUTE_LIST;
 const PROC_THREAD_ATTRIBUTE_PARENT_PROCESS = win.PROC_THREAD_ATTRIBUTE_PARENT_PROCESS;
+const PROCESS_BASIC_INFORMATION = win.PROCESS_BASIC_INFORMATION;
+const PEB = win.PEB;
+const RTL_USER_PROCESS_PARAMETERS = win.RTL_USER_PROCESS_PARAMETERS;
 
 const CreateToolhelp32Snapshot = win.CreateToolhelp32Snapshot;
 const Process32First = win.Process32First;
@@ -27,6 +30,18 @@ const CreateProcessA = win.CreateProcessA;
 const InitializeProcThreadAttributeList = win.InitializeProcThreadAttributeList;
 const UpdateProcThreadAttribute = win.UpdateProcThreadAttribute;
 const DeleteProcThreadAttributeList = win.DeleteProcThreadAttributeList;
+const ReadProcessMemory = win.ReadProcessMemory;
+const WriteProcessMemory = win.WriteProcessMemory;
+const NtQueryInformationProcess = win.NtQueryInformationProcess;
+const ResumeThread = win.ResumeThread;
+const HeapFree = win.HeapFree;
+const GetProcessHeap = win.GetProcessHeap;
+
+const ProcessInfo = struct {
+    h_process: HANDLE,
+    process_id: u32,
+    h_thread: HANDLE,
+};
 
 pub fn openProcessByName(process_name: []const u8) !struct { h_process: HANDLE, process_id: u32 } {
     const h_snapshot = CreateToolhelp32Snapshot(.{ .SNAPPROCESS = 1 }, 0) orelse {
@@ -128,6 +143,55 @@ pub fn openProcessByName2(process_name: []const u8) !?HANDLE {
     return null;
 }
 
+pub fn openProcessByName3(allocator: std.mem.Allocator, process_name: []const u8) !?HANDLE {
+    var return_len1: u32 = 0;
+    _ = NtQuerySystemInformation(
+        .ProcessInformation,
+        null,
+        0,
+        &return_len1,
+    );
+
+    const system_proc_info = try allocator.alloc(u8, return_len1);
+    defer allocator.free(system_proc_info);
+
+    var return_len2: u32 = 0;
+    const status = NtQuerySystemInformation(
+        .ProcessInformation,
+        system_proc_info.ptr,
+        return_len1,
+        &return_len2,
+    );
+    if (status != 0) {
+        std.debug.print("[!] NtQuerySystemInformation Failed With Error: {d}\n", .{status});
+        return error.NtQuerySystemInformationFailed;
+    }
+
+    var current_proc: *SYSTEM_PROCESS_INFORMATION = @ptrCast(@alignCast(system_proc_info));
+    while (true) {
+        if (current_proc.ImageName.Buffer != null and current_proc.UniqueProcessId != null) {
+            const utf16_slice = current_proc.ImageName.Buffer.?[0 .. current_proc.ImageName.Length / 2];
+
+            const utf8_slice = try std.unicode.utf16LeToUtf8Alloc(allocator, utf16_slice);
+            defer allocator.free(utf8_slice);
+
+            if (std.ascii.eqlIgnoreCase(utf8_slice, process_name)) {
+                const process_id: u32 = @truncate(@intFromPtr(current_proc.UniqueProcessId.?));
+                const h_process = OpenProcess(PROCESS_ALL_ACCESS, 0, process_id) orelse {
+                    std.debug.print("[!] OpenProcess Failed With Error: {s}\n", .{@tagName(GetLastError())});
+                    return error.OpenProcessFailed;
+                };
+                return h_process;
+            }
+        }
+
+        if (current_proc.NextEntryOffset == 0) break;
+        current_proc = @ptrCast(@alignCast(@as([*]u8, @ptrCast(current_proc)) + current_proc.NextEntryOffset));
+    }
+
+    return null;
+}
+
 pub fn printProcesses(writer: anytype) !void {
     var process_ids: [1024]u32 = undefined;
     var return_len1: u32 = 0;
@@ -194,73 +258,27 @@ pub fn printProcesses(writer: anytype) !void {
     }
 }
 
-pub fn openProcessByName3(allocator: std.mem.Allocator, process_name: []const u8) !?HANDLE {
-    var return_len1: u32 = 0;
-    _ = NtQuerySystemInformation(
-        .ProcessInformation,
-        null,
-        0,
-        &return_len1,
-    );
-
-    const system_proc_info = try allocator.alloc(u8, return_len1);
-    defer allocator.free(system_proc_info);
-
-    var return_len2: u32 = 0;
-    const status = NtQuerySystemInformation(
-        .ProcessInformation,
-        system_proc_info.ptr,
-        return_len1,
-        &return_len2,
-    );
-    if (status != 0) {
-        std.debug.print("[!] NtQuerySystemInformation Failed With Error: {d}\n", .{status});
-        return error.NtQuerySystemInformationFailed;
-    }
-
-    var current_proc: *SYSTEM_PROCESS_INFORMATION = @ptrCast(@alignCast(system_proc_info));
-    while (true) {
-        if (current_proc.ImageName.Buffer != null and current_proc.UniqueProcessId != null) {
-            const utf16_slice = current_proc.ImageName.Buffer.?[0 .. current_proc.ImageName.Length / 2];
-
-            const utf8_slice = try std.unicode.utf16LeToUtf8Alloc(allocator, utf16_slice);
-            defer allocator.free(utf8_slice);
-
-            if (std.ascii.eqlIgnoreCase(utf8_slice, process_name)) {
-                const process_id: u32 = @truncate(@intFromPtr(current_proc.UniqueProcessId.?));
-                const h_process = OpenProcess(PROCESS_ALL_ACCESS, 0, process_id) orelse {
-                    std.debug.print("[!] OpenProcess Failed With Error: {s}\n", .{@tagName(GetLastError())});
-                    return error.OpenProcessFailed;
-                };
-                return h_process;
-            }
-        }
-
-        if (current_proc.NextEntryOffset == 0) break;
-        current_proc = @ptrCast(@alignCast(@as([*]u8, @ptrCast(current_proc)) + current_proc.NextEntryOffset));
-    }
-
-    return null;
-}
-
 const ProcessCreationMode = enum {
     Suspended,
     Debugged,
 };
 
-pub fn createSuspendedProcess(allocator: std.mem.Allocator, process_name: []const u8, mode: ProcessCreationMode) !struct { h_process: HANDLE, process_id: u32, h_thread: HANDLE } {
+pub fn createSuspendedProcess(allocator: std.mem.Allocator, process_name: []const u8, mode: ProcessCreationMode) !ProcessInfo {
     const win_dir = try std.process.getEnvVarOwned(allocator, "WINDIR");
     defer allocator.free(win_dir);
 
-    const path = try std.fmt.allocPrintZ(allocator, "{s}\\System32\\{s}", .{ win_dir, process_name });
+    const system_dir = try std.fmt.allocPrintZ(allocator, "{s}\\System32", .{win_dir});
+    defer allocator.free(system_dir);
+
+    const path = try std.fmt.allocPrintZ(allocator, "{s}\\{s}", .{ system_dir, process_name });
     defer allocator.free(path);
 
     var startup_info = std.mem.zeroes(STARTUPINFOA);
     var process_info: PROCESS_INFORMATION = undefined;
 
     const creation_mode: PROCESS_CREATION_FLAGS = switch (mode) {
-        .Suspended => .{ .CREATE_SUSPENDED = 1 },
-        .Debugged => .{ .DEBUG_PROCESS = 1 },
+        .Suspended => .{ .CREATE_SUSPENDED = 1, .CREATE_NO_WINDOW = 1 },
+        .Debugged => .{ .DEBUG_PROCESS = 1, .CREATE_NO_WINDOW = 1 },
     };
 
     if (CreateProcessA(
@@ -271,7 +289,7 @@ pub fn createSuspendedProcess(allocator: std.mem.Allocator, process_name: []cons
         0,
         creation_mode,
         null,
-        null,
+        system_dir,
         &startup_info,
         &process_info,
     ) == 0) {
@@ -292,7 +310,7 @@ pub fn createSuspendedProcess(allocator: std.mem.Allocator, process_name: []cons
 }
 
 // TODO: Got a segmentation fault error due to an unknown reason
-pub fn createPPidSpoofedProcess(allocator: std.mem.Allocator, h_parent_process: HANDLE, process_name: []const u8) !struct { h_process: HANDLE, process_id: u32, h_thread: HANDLE } {
+pub fn createPPidSpoofedProcess(allocator: std.mem.Allocator, h_parent_process: HANDLE, process_name: []const u8) !ProcessInfo {
     const win_dir = try std.process.getEnvVarOwned(allocator, "WINDIR");
     defer allocator.free(win_dir);
 
@@ -370,4 +388,100 @@ pub fn createPPidSpoofedProcess(allocator: std.mem.Allocator, h_parent_process: 
         .process_id = process_info.dwProcessId,
         .h_thread = process_info.hThread.?,
     };
+}
+
+pub fn readFromTargetProcess(h_process: HANDLE, base_address: *anyopaque, buf: *anyopaque, buf_len: usize) !void {
+    var num_of_bytes_read: usize = 0;
+    if (ReadProcessMemory(
+        h_process,
+        base_address,
+        buf,
+        buf_len,
+        &num_of_bytes_read,
+    ) == 0 or num_of_bytes_read != buf_len) {
+        std.debug.print("[!] ReadProcessMemory Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.ReadProcessMemoryFailed;
+    }
+}
+
+pub fn writeToTargetProcess(h_process: HANDLE, base_address: *anyopaque, buf: *anyopaque, buf_len: usize) !void {
+    var num_of_bytes_written: usize = 0;
+    if (WriteProcessMemory(
+        h_process,
+        base_address,
+        buf,
+        buf_len,
+        &num_of_bytes_written,
+    ) == 0 or num_of_bytes_written != buf_len) {
+        std.debug.print("[!] WriteProcessMemory Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.WriteProcessMemoryFailed;
+    }
+}
+
+pub fn createArgSpoofedProcess(allocator: std.mem.Allocator, application_name: []const u8, startup_args: []const u8, real_args: []const u8) !ProcessInfo {
+    const startup_process_name = try std.mem.join(allocator, " ", &.{ application_name, startup_args });
+    defer allocator.free(startup_process_name);
+
+    const real_process_name = try std.mem.join(allocator, " ", &.{ application_name, real_args });
+    defer allocator.free(real_process_name);
+
+    const process_info = try createSuspendedProcess(
+        allocator,
+        startup_process_name,
+        .Suspended,
+    );
+
+    var process_information: PROCESS_BASIC_INFORMATION = undefined;
+    var return_len: u32 = 0;
+    const status = NtQueryInformationProcess(
+        process_info.h_process,
+        .BasicInformation,
+        @ptrCast(&process_information),
+        @sizeOf(PROCESS_BASIC_INFORMATION),
+        &return_len,
+    );
+    if (status != 0) {
+        std.debug.print("[!] NtQueryInformationProcess Failed With Error: {d}\n", .{status});
+        return error.NtQueryInformationProcessFailed;
+    }
+
+    var peb: PEB = undefined;
+    try readFromTargetProcess(
+        process_info.h_process,
+        @ptrCast(process_information.PebBaseAddress.?),
+        @ptrCast(&peb),
+        @sizeOf(PEB),
+    );
+    defer _ = HeapFree(GetProcessHeap(), .{}, @ptrCast(&peb));
+
+    var process_parameters: RTL_USER_PROCESS_PARAMETERS = undefined;
+    try readFromTargetProcess(
+        process_info.h_process,
+        @ptrCast(peb.ProcessParameters.?),
+        @ptrCast(&process_parameters),
+        @sizeOf(RTL_USER_PROCESS_PARAMETERS) + 0xff,
+    );
+    defer _ = HeapFree(GetProcessHeap(), .{}, @ptrCast(&process_parameters));
+
+    const real_process_name_utf16 = try std.unicode.utf8ToUtf16LeAllocZ(allocator, real_process_name);
+    defer allocator.free(real_process_name_utf16);
+
+    try writeToTargetProcess(
+        process_info.h_process,
+        process_parameters.CommandLine.Buffer.?,
+        @ptrCast(real_process_name_utf16.ptr),
+        real_process_name_utf16.len * @sizeOf(u16) + 1,
+    );
+
+    const new_len: u16 = @as(u16, @intCast(application_name.len)) * @sizeOf(u16);
+    try writeToTargetProcess(
+        process_info.h_process,
+        @ptrFromInt(@intFromPtr(peb.ProcessParameters.?) + @offsetOf(RTL_USER_PROCESS_PARAMETERS, "CommandLine")),
+        @constCast(&new_len),
+        @sizeOf(u16),
+    );
+
+    _ = ResumeThread(process_info.h_thread);
+
+    return process_info;
 }

@@ -1,5 +1,9 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const win = @import("zigwin32").everything;
+const c = @cImport({
+    @cInclude("seg_access/seg_access.h");
+});
 
 const FARPROC = win.FARPROC;
 const HINSTANCE = win.HINSTANCE;
@@ -49,6 +53,8 @@ const IMAGE_NT_HEADERS64 = extern struct {
     OptionalHeader: IMAGE_OPTIONAL_HEADER64,
 };
 const IMAGE_EXPORT_DIRECTORY = win.IMAGE_EXPORT_DIRECTORY;
+const PEB = win.PEB;
+const LDR_DATA_TABLE_ENTRY = win.LDR_DATA_TABLE_ENTRY;
 
 const IMAGE_DOS_SIGNATURE = win.IMAGE_DOS_SIGNATURE;
 const IMAGE_DIRECTORY_ENTRY_EXPORT = win.IMAGE_DIRECTORY_ENTRY_EXPORT;
@@ -83,6 +89,32 @@ pub fn getProcAddressReplacement(h_module: HINSTANCE, proc_name: []const u8) !?F
         const function_address = base_address + function_address_array[function_ordinal];
 
         if (std.mem.eql(u8, std.mem.span(function_name), proc_name)) return @constCast(@ptrCast(function_address));
+    }
+
+    return null;
+}
+
+pub fn getModuleHandleReplacement(allocator: std.mem.Allocator, module_name: []const u8) !?HINSTANCE {
+    const peb: *const PEB = switch (builtin.cpu.arch) {
+        .x86_64 => @ptrFromInt(c.readgsqword(0x60)),
+        .x86 => @ptrFromInt(c.readfsdword(0x30)),
+        else => unreachable,
+    };
+
+    const ldr = peb.Ldr orelse return null;
+
+    var data_table_entry: ?*const LDR_DATA_TABLE_ENTRY = @ptrCast(ldr.InMemoryOrderModuleList.Flink);
+
+    while (data_table_entry) |entry| {
+        if (entry.FullDllName.Buffer == null or entry.FullDllName.Length == 0) break;
+
+        const utf16_slice = entry.FullDllName.Buffer.?[0 .. entry.FullDllName.Length / 2];
+        const utf8_slice = try std.unicode.utf16LeToUtf8Alloc(allocator, utf16_slice);
+        defer allocator.free(utf8_slice);
+
+        if (std.ascii.eqlIgnoreCase(module_name, utf8_slice)) return @ptrCast(entry.Reserved2[0]);
+
+        data_table_entry = @alignCast(@ptrCast(entry.*.Reserved1[0]));
     }
 
     return null;

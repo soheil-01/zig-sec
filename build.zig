@@ -5,15 +5,6 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const zigwin32_module = b.dependency("zigwin32", .{}).module("zigwin32");
-
-    const module = b.addModule("zig-sec", .{
-        .root_source_file = b.path("src/utils/zig-sec.zig"),
-        .imports = &.{
-            .{ .name = "zigwin32", .module = zigwin32_module },
-        },
-    });
-
     const tiny_aes_lib = b.addStaticLibrary(.{
         .name = "aes",
         .optimize = .Debug,
@@ -24,6 +15,29 @@ pub fn build(b: *std.Build) void {
         .flags = &.{"-std=c99"},
     });
     tiny_aes_lib.linkLibC();
+
+    const seg_access_lib = b.addStaticLibrary(.{
+        .name = "seg_access",
+        .optimize = .Debug,
+        .target = target,
+    });
+    seg_access_lib.addCSourceFiles(.{
+        .files = &.{"lib/seg_access/seg_access.c"},
+        .flags = &.{"-std=c99"},
+    });
+    seg_access_lib.linkLibC();
+
+    const zigwin32_module = b.dependency("zigwin32", .{}).module("zigwin32");
+
+    const module = b.addModule("zig-sec", .{
+        .root_source_file = b.path("src/utils/zig-sec.zig"),
+        .imports = &.{
+            .{ .name = "zigwin32", .module = zigwin32_module },
+        },
+        .link_libc = true,
+    });
+    module.addIncludePath(b.path("lib"));
+    module.linkLibrary(seg_access_lib);
 
     const file_to_build = b.option(
         []const u8,
@@ -55,9 +69,11 @@ pub fn build(b: *std.Build) void {
             exe.root_module.addImport("zig-sec", module);
             exe.addIncludePath(b.path("lib"));
 
+            exe.linkLibrary(seg_access_lib);
+            exe.linkLibC();
+
             if (use_aes_lib) {
                 exe.linkLibrary(tiny_aes_lib);
-                exe.linkLibC();
             }
 
             b.installArtifact(exe);
@@ -83,9 +99,11 @@ pub fn build(b: *std.Build) void {
             lib.root_module.addImport("zigwin32", zigwin32_module);
             lib.addIncludePath(b.path("lib"));
 
+            lib.linkLibrary(seg_access_lib);
+            lib.linkLibC();
+
             if (use_aes_lib) {
                 lib.linkLibrary(tiny_aes_lib);
-                lib.linkLibC();
             }
 
             b.installArtifact(lib);

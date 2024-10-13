@@ -1,9 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const win = @import("zigwin32").everything;
-const c = @cImport({
-    @cInclude("seg_access/seg_access.h");
-});
 const hash = @import("hash.zig");
 
 const FARPROC = win.FARPROC;
@@ -131,15 +128,9 @@ pub fn getProcAddressH(h_module: HINSTANCE, proc_name_hash: u32) !?FARPROC {
 }
 
 pub fn getModuleHandleReplacement(allocator: std.mem.Allocator, module_name: []const u8) !?HINSTANCE {
-    const peb: *const PEB = switch (builtin.cpu.arch) {
-        .x86_64 => @ptrFromInt(c.readgsqword(0x60)),
-        .x86 => @ptrFromInt(c.readfsdword(0x30)),
-        else => unreachable,
-    };
+    const peb = std.os.windows.peb();
 
-    const ldr = peb.Ldr orelse return null;
-
-    var data_table_entry: ?*const LDR_DATA_TABLE_ENTRY = @ptrCast(ldr.InMemoryOrderModuleList.Flink);
+    var data_table_entry: ?*const LDR_DATA_TABLE_ENTRY = @ptrCast(peb.Ldr.InMemoryOrderModuleList.Flink);
 
     while (data_table_entry) |entry| {
         if (entry.FullDllName.Buffer == null or entry.FullDllName.Length == 0) break;
@@ -157,15 +148,9 @@ pub fn getModuleHandleReplacement(allocator: std.mem.Allocator, module_name: []c
 }
 
 pub fn getModuleHandleH(allocator: std.mem.Allocator, module_name_hash: u32) !?HINSTANCE {
-    const peb: *const PEB = switch (builtin.cpu.arch) {
-        .x86_64 => @ptrFromInt(c.readgsqword(0x60)),
-        .x86 => @ptrFromInt(c.readfsdword(0x30)),
-        else => unreachable,
-    };
+    const peb = std.os.windows.peb();
 
-    const ldr = peb.Ldr orelse return null;
-
-    var data_table_entry: ?*const LDR_DATA_TABLE_ENTRY = @ptrCast(ldr.InMemoryOrderModuleList.Flink);
+    var data_table_entry: ?*const LDR_DATA_TABLE_ENTRY = @ptrCast(peb.Ldr.InMemoryOrderModuleList.Flink);
 
     while (data_table_entry) |entry| {
         if (entry.FullDllName.Buffer == null or entry.FullDllName.Length == 0) break;

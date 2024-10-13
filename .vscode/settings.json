@@ -1,9 +1,0 @@
-{
-    "files.associations": {
-        "readgsqword.h": "c",
-        "seg_access.h": "c",
-        "stdint.h": "c",
-        "immintrin.h": "c",
-        "mmintrin.h": "c"
-    }
-}

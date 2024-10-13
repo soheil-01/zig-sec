@@ -5,6 +5,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const is_windows = target.query.os_tag == .windows;
+
     const tiny_aes_lib = b.addStaticLibrary(.{
         .name = "aes",
         .optimize = .Debug,
@@ -34,10 +36,12 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "zigwin32", .module = zigwin32_module },
         },
-        .link_libc = true,
+        .link_libc = is_windows,
     });
-    module.addIncludePath(b.path("lib"));
-    module.linkLibrary(seg_access_lib);
+    if (is_windows) {
+        module.addIncludePath(b.path("lib"));
+        module.linkLibrary(seg_access_lib);
+    }
 
     const file_to_build = b.option(
         []const u8,
@@ -69,11 +73,13 @@ pub fn build(b: *std.Build) void {
             exe.root_module.addImport("zig-sec", module);
             exe.addIncludePath(b.path("lib"));
 
-            exe.linkLibrary(seg_access_lib);
-            exe.linkLibC();
+            if (is_windows) {
+                exe.linkLibrary(seg_access_lib);
+                exe.linkLibC();
 
-            if (use_aes_lib) {
-                exe.linkLibrary(tiny_aes_lib);
+                if (use_aes_lib) {
+                    exe.linkLibrary(tiny_aes_lib);
+                }
             }
 
             b.installArtifact(exe);
@@ -99,11 +105,13 @@ pub fn build(b: *std.Build) void {
             lib.root_module.addImport("zigwin32", zigwin32_module);
             lib.addIncludePath(b.path("lib"));
 
-            lib.linkLibrary(seg_access_lib);
-            lib.linkLibC();
+            if (is_windows) {
+                lib.linkLibrary(seg_access_lib);
+                lib.linkLibC();
 
-            if (use_aes_lib) {
-                lib.linkLibrary(tiny_aes_lib);
+                if (use_aes_lib) {
+                    lib.linkLibrary(tiny_aes_lib);
+                }
             }
 
             b.installArtifact(lib);

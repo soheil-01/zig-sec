@@ -1,4 +1,7 @@
+#ifdef _WIN32
 #include <intrin.h>
+#endif
+
 #include <stdint.h>
 
 #ifdef _M_X64

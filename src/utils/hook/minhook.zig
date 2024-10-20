@@ -1,4 +1,7 @@
+const std = @import("std");
 const builtin = @import("builtin");
+
+const win = std.os.windows;
 
 const minhook = switch (builtin.cpu.arch) {
     .x86 => struct {
@@ -11,6 +14,7 @@ const minhook = switch (builtin.cpu.arch) {
         extern "minhook/MinHook.x86" fn MH_EnableHook(?*align(1) const anyopaque) callconv(.C) MH_STATUS;
         extern "minhook/MinHook.x86" fn MH_DisableHook(?*align(1) const anyopaque) callconv(.C) MH_STATUS;
         extern "minhook/MinHook.x86" fn MH_CreateHook(*align(1) const anyopaque, *align(1) const anyopaque, ?*align(1) const anyopaque) callconv(.C) MH_STATUS;
+        extern "minhook/MinHook.x86" fn MH_CreateHookApi(win.LPCWSTR, win.LPCSTR, *align(1) const anyopaque, ?*align(1) const anyopaque) callconv(.C) MH_STATUS;
     },
     .x86_64 => struct {
         extern "minhook/MinHook.x64" fn MH_Initialize() callconv(.C) MH_STATUS;
@@ -22,6 +26,7 @@ const minhook = switch (builtin.cpu.arch) {
         extern "minhook/MinHook.x64" fn MH_EnableHook(?*align(1) const anyopaque) callconv(.C) MH_STATUS;
         extern "minhook/MinHook.x64" fn MH_DisableHook(?*align(1) const anyopaque) callconv(.C) MH_STATUS;
         extern "minhook/MinHook.x64" fn MH_CreateHook(*align(1) const anyopaque, *align(1) const anyopaque, ?*align(1) const anyopaque) callconv(.C) MH_STATUS;
+        extern "minhook/MinHook.x64" fn MH_CreateHookApi(win.LPCWSTR, win.LPCSTR, *align(1) const anyopaque, ?*align(1) const anyopaque) callconv(.C) MH_STATUS;
     },
     else => unreachable,
 };
@@ -63,6 +68,17 @@ pub fn uninitialize() MH_STATUS {
 /// - original [out]: A pointer to the trampoline function, which will be used to call the original target function. Can be `null`.
 pub fn createHook(target: *const anyopaque, detour: *const anyopaque, original: ?*const anyopaque) MH_STATUS {
     return minhook.MH_CreateHook(target, detour, original);
+}
+
+// Creates a hook for the specified API function, in disabled state.
+///
+// Parameters:
+// - module [in]: A pointer to the loaded module name which contains the target function.
+// - proc_name [in]: A pointer to the target function name, which will be overridden by the detour function.
+// - detour [in]:  A pointer to the detour function, which will override the target function.
+// - original [out]: A pointer to the trampoline function, which will be used to call the original target function This parameter can be NULL.
+pub fn createHookApi(module: win.LPCWSTR, proc_name: win.LPCSTR, detour: *const anyopaque, original: ?*const anyopaque) MH_STATUS {
+    return minhook.MH_CreateHookApi(module, proc_name, detour, original);
 }
 
 /// Enables an already created hook.

@@ -81,6 +81,7 @@ pub fn build(b: *std.Build) void {
                 .optimize = optimize,
             });
             lib.root_module.addImport("zigwin32", zigwin32_module);
+            lib.root_module.addImport("zig-sec", module);
             lib.addIncludePath(b.path("lib"));
 
             if (is_windows) {

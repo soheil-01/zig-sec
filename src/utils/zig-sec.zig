@@ -27,3 +27,4 @@ pub const common = @import("common.zig");
 pub const hash = @import("hash.zig");
 pub const win = @import("win.zig");
 pub const hook = @import("hook.zig");
+pub const minhook = @import("minhook.zig");

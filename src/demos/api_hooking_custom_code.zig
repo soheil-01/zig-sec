@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = @import("builtin");
 const sec = @import("zig-sec");
 
 const win = std.os.windows;

@@ -21,10 +21,14 @@ pub const code_injection = struct {
     pub const remote = @import("code_injection/remote.zig");
 };
 
+pub const hook = struct {
+    pub const minhook = @import("hook/minhook.zig");
+    pub const custom = @import("hook/custom.zig");
+    pub const detours = @import("hook/detours.zig");
+};
+
 pub const process = @import("process.zig");
 pub const thread = @import("thread.zig");
 pub const common = @import("common.zig");
 pub const hash = @import("hash.zig");
 pub const win = @import("win.zig");
-pub const hook = @import("hook.zig");
-pub const minhook = @import("minhook.zig");

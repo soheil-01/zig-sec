@@ -2,6 +2,7 @@ const std = @import("std");
 const sec = @import("zig-sec");
 
 const win = std.os.windows;
+const custom_hook = sec.hook.custom;
 
 extern "user32" fn MessageBoxA(hWnd: ?win.HWND, lpText: ?[*:0]const u8, lpCaption: ?[*:0]const u8, uType: u32) callconv(win.WINAPI) i32;
 extern "user32" fn MessageBoxW(hWnd: ?win.HWND, lpText: ?[*:0]const u16, lpCaption: ?[*:0]const u16, uType: u32) callconv(win.WINAPI) i32;
@@ -25,7 +26,7 @@ pub fn main() !void {
 
     const MessageBoxA_ptr = win.kernel32.GetProcAddress(user32, "MessageBoxA") orelse return error.GetProcAddressFailed;
 
-    var function_hook = try sec.hook.FunctionHook.create(
+    var function_hook = try custom_hook.FunctionHook.create(
         MessageBoxA_ptr,
         @constCast(@ptrCast(&MyMessageBoxA)),
     );

@@ -2,7 +2,7 @@ const std = @import("std");
 const sec = @import("zig-sec");
 
 const win = std.os.windows;
-const minhook = sec.minhook;
+const minhook = sec.hook.minhook;
 
 extern "user32" fn MessageBoxA(hWnd: ?win.HWND, lpText: ?[*:0]const u8, lpCaption: ?[*:0]const u8, uType: u32) callconv(win.WINAPI) i32;
 

@@ -6,7 +6,7 @@ const win = std.os.windows;
 const HANDLE = win.HANDLE;
 
 fn NtTerminateProcess(allocator: std.mem.Allocator, process_handle: usize, exit_status: usize) !usize {
-    const ssn = try sec.syscall.getSyscallNumberHellsGate(allocator, "NtTerminateProcess");
+    const ssn = try sec.syscall.getSyscallNumberSysWhispers(allocator, "NtTerminateProcess");
     return sec.syscall.syscall2(ssn, process_handle, exit_status);
 }
 

@@ -57,8 +57,14 @@ const LDR_DATA_TABLE_ENTRY = win.LDR_DATA_TABLE_ENTRY;
 const IMAGE_DOS_SIGNATURE = win.IMAGE_DOS_SIGNATURE;
 const IMAGE_DIRECTORY_ENTRY_EXPORT = win.IMAGE_DIRECTORY_ENTRY_EXPORT;
 
-pub fn getProcAddressReplacement(h_module: HINSTANCE, proc_name: []const u8) !?FARPROC {
-    const base_address: [*]const u8 = @ptrCast(h_module);
+const ExportDirectory = struct {
+    function_address_array: [*]const u32,
+    function_name_array: [*]const u32,
+    function_ordinal_array: [*]const u16,
+    number_of_functions: u32,
+};
+
+pub fn getExportDirectory(base_address: [*]const u8) ?ExportDirectory {
     const dos_header: *const IMAGE_DOS_HEADER = @alignCast(@ptrCast(base_address));
 
     if (dos_header.e_magic != IMAGE_DOS_SIGNATURE) return null;
@@ -81,10 +87,22 @@ pub fn getProcAddressReplacement(h_module: HINSTANCE, proc_name: []const u8) !?F
     const function_name_array: [*]const u32 = @alignCast(@ptrCast(base_address + @as(usize, @intCast(export_directory.AddressOfNames))));
     const function_ordinal_array: [*]const u16 = @alignCast(@ptrCast(base_address + @as(usize, @intCast(export_directory.AddressOfNameOrdinals))));
 
-    for (0..export_directory.NumberOfFunctions) |i| {
-        const function_name: [*:0]const u8 = @alignCast(@ptrCast(base_address + function_name_array[i]));
-        const function_ordinal = function_ordinal_array[i];
-        const function_address = base_address + function_address_array[function_ordinal];
+    return .{
+        .function_address_array = function_address_array,
+        .function_name_array = function_name_array,
+        .function_ordinal_array = function_ordinal_array,
+        .number_of_functions = export_directory.NumberOfFunctions,
+    };
+}
+
+pub fn getProcAddressReplacement(h_module: HINSTANCE, proc_name: []const u8) !?FARPROC {
+    const base_address: [*]const u8 = @ptrCast(h_module);
+    const export_directory = getExportDirectory(base_address) orelse return null;
+
+    for (0..export_directory.number_of_functions) |i| {
+        const function_name: [*:0]const u8 = @alignCast(@ptrCast(base_address + export_directory.function_name_array[i]));
+        const function_ordinal = export_directory.function_ordinal_array[i];
+        const function_address = base_address + export_directory.function_address_array[function_ordinal];
 
         if (std.mem.eql(u8, std.mem.span(function_name), proc_name)) return @constCast(@ptrCast(function_address));
     }

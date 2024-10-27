@@ -1,6 +1,20 @@
 const std = @import("std");
 const win = @import("win.zig");
 
+const windows = std.os.windows;
+
+pub fn syscall1(ssn: u32, arg1: usize) usize {
+    return asm volatile (
+        \\movq %rcx, %r10
+        \\movl %[ssn], %eax
+        \\syscall
+        : [ret] "={rax}" (-> usize),
+        : [ssn] "rm" (ssn),
+          [arg1] "{rcx}" (arg1),
+        : "r10", "r11"
+    );
+}
+
 pub fn syscall2(ssn: u32, arg1: usize, arg2: usize) usize {
     return asm volatile (
         \\movq %rcx, %r10

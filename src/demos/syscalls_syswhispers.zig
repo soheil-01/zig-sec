@@ -4,10 +4,46 @@ const sec = @import("zig-sec");
 const win = std.os.windows;
 
 const HANDLE = win.HANDLE;
+const NTSTATUS = win.NTSTATUS;
 
-fn NtTerminateProcess(allocator: std.mem.Allocator, process_handle: usize, exit_status: usize) !usize {
+// #1
+// comptime {
+//     asm (
+//         \\.global NtTerminateProcess
+//         \\.section .text
+//         \\NtTerminateProcess:
+//         \\  movq %rcx, %r10
+//         \\  movl $0x2c, %eax
+//         \\  syscall
+//         \\  ret
+//     );
+// }
+
+// #2
+// comptime {
+//     asm (
+//         \\.intel_syntax noprefix
+//         \\.text
+//         \\.global NtTerminateProcess
+//         \\.extern SW2_GetSyscallNumber
+//         \\NtTerminateProcess:
+//         \\  mov r10, rcx
+//         \\  mov eax, 0x2c
+//         \\  syscall
+//         \\  ret
+//     );
+// }
+
+// extern fn NtTerminateProcess(process_handle: HANDLE, exit_status: NTSTATUS) callconv(win.WINAPI) NTSTATUS;
+
+fn NtTerminateProcess(allocator: std.mem.Allocator, process_handle: HANDLE, exit_status: NTSTATUS) !NTSTATUS {
     const ssn = try sec.syscall.getSyscallNumberSysWhispers(allocator, "NtTerminateProcess");
-    return sec.syscall.syscall2(ssn, process_handle, exit_status);
+
+    return @enumFromInt(sec.syscall.syscallN(
+        ssn,
+        @intFromPtr(process_handle),
+        @intFromEnum(exit_status),
+    ));
 }
 
 pub fn main() !void {
@@ -23,5 +59,5 @@ pub fn main() !void {
     const process_name = args[1];
     const process = try sec.process.openProcessByName(process_name);
 
-    _ = try NtTerminateProcess(allocator, @intFromPtr(process.h_process), 0);
+    _ = try NtTerminateProcess(allocator, process.h_process, .SUCCESS);
 }

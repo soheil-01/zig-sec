@@ -117,10 +117,7 @@ pub fn injectShellCodeViaApc(h_process: HANDLE, h_thread: HANDLE, shell_code: []
     }
 }
 
-pub fn mapInject(h_process: HANDLE, shell_code: []const u8) !struct {
-    map_local_address: *anyopaque,
-    map_remote_address: *anyopaque,
-} {
+pub fn mapInject(h_process: HANDLE, shell_code: []const u8) !struct { map_local_address: *anyopaque, map_remote_address: *anyopaque } {
     const h_file = CreateFileMappingA(
         INVALID_HANDLE_VALUE,
         null,

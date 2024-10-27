@@ -4,10 +4,16 @@ const sec = @import("zig-sec");
 const win = std.os.windows;
 
 const HANDLE = win.HANDLE;
+const NTSTATUS = win.NTSTATUS;
 
-fn NtTerminateProcess(allocator: std.mem.Allocator, process_handle: usize, exit_status: usize) !usize {
+fn NtTerminateProcess(allocator: std.mem.Allocator, process_handle: HANDLE, exit_status: NTSTATUS) !NTSTATUS {
     const ssn = try sec.syscall.getSyscallNumberHellsGate(allocator, "NtTerminateProcess");
-    return sec.syscall.syscall2(ssn, process_handle, exit_status);
+
+    return @enumFromInt(sec.syscall.syscall2(
+        ssn,
+        @intFromPtr(process_handle),
+        @intFromEnum(exit_status),
+    ));
 }
 
 pub fn main() !void {
@@ -23,5 +29,9 @@ pub fn main() !void {
     const process_name = args[1];
     const process = try sec.process.openProcessByName(process_name);
 
-    _ = try NtTerminateProcess(allocator, @intFromPtr(process.h_process), 0);
+    const status = try NtTerminateProcess(allocator, process.h_process, .SUCCESS);
+    if (status != .SUCCESS) {
+        std.debug.print("Error: {s}\n", .{@tagName(status)});
+        return error.NtTerminateProcessFailed;
+    }
 }

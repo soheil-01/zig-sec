@@ -33,3 +33,4 @@ pub const common = @import("common.zig");
 pub const hash = @import("hash.zig");
 pub const win = @import("win.zig");
 pub const syscall = @import("syscall.zig");
+pub const anti_debugging = @import("anti_debugging.zig");

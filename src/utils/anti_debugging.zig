@@ -17,6 +17,8 @@ const NtQueryInformationProcess = *const fn (
 ) NTSTATUS;
 const PROCESSENTRY32 = win.PROCESSENTRY32;
 const LARGE_INTEGER = win.LARGE_INTEGER;
+const FILE_RENAME_INFO = win.FILE_RENAME_INFO;
+const FILE_DISPOSITION_INFO = win.FILE_DISPOSITION_INFO;
 
 const IsDebuggerPresent = win.IsDebuggerPresent;
 const GetThreadContext = win.GetThreadContext;
@@ -30,6 +32,13 @@ const QueryPerformanceCounter = win.QueryPerformanceCounter;
 const DebugBreak = win.DebugBreak;
 const SetLastError = win.SetLastError;
 const OutputDebugStringA = win.OutputDebugStringA;
+const GetModuleFileNameA = win.GetModuleFileNameA;
+const CreateFileA = win.CreateFileA;
+const SetFileInformationByHandle = win.SetFileInformationByHandle;
+
+const FILE_SHARE_READ = win.FILE_SHARE_READ;
+const INVALID_HANDLE_VALUE = win.INVALID_HANDLE_VALUE;
+const MAX_PATH = win.MAX_PATH;
 
 pub fn isDebuggerPresent() bool {
     return IsDebuggerPresent() == 1;
@@ -157,4 +166,81 @@ pub fn outputDebugStringCheck() bool {
     OutputDebugStringA("Maldev");
 
     return GetLastError() == .NO_ERROR;
+}
+
+pub fn deleteSelf(allocator: std.mem.Allocator) !void {
+    var path_buf: [MAX_PATH:0]u8 = undefined;
+    const len = GetModuleFileNameA(null, &path_buf, path_buf.len);
+    if (len == 0) {
+        std.debug.print("[!] GetModuleFileNameA Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.GetModuleFileNameAFailed;
+    }
+
+    var h_file = CreateFileA(
+        &path_buf,
+        .{ .DELETE = 1, .SYNCHRONIZE = 1 },
+        FILE_SHARE_READ,
+        null,
+        .OPEN_EXISTING,
+        .{},
+        null,
+    );
+    if (h_file == INVALID_HANDLE_VALUE) {
+        std.debug.print("[!] CreateFileA Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.CreateFileAFailed;
+    }
+
+    const new_stream = std.unicode.utf8ToUtf16LeStringLiteral(":Maldev");
+
+    const rename_info_size = @sizeOf(FILE_RENAME_INFO) + new_stream.len * 2;
+    const rename_info_bytes = try allocator.alloc(u8, rename_info_size);
+    defer allocator.free(rename_info_bytes);
+
+    @memset(rename_info_bytes, 0);
+
+    const rename_info: *FILE_RENAME_INFO = @alignCast(@ptrCast(rename_info_bytes));
+
+    rename_info.FileNameLength = new_stream.len * 2;
+    const file_name_ptr: [*]u16 = @ptrCast(&rename_info.FileName);
+    std.mem.copyForwards(u16, file_name_ptr[0..new_stream.len], new_stream);
+
+    if (SetFileInformationByHandle(
+        h_file,
+        .FileRenameInfo,
+        rename_info,
+        rename_info_size,
+    ) == 0) {
+        std.debug.print("[!] SetFileInformationByHandle Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.SetFileInformationByHandleFailed;
+    }
+
+    _ = CloseHandle(h_file);
+
+    h_file = CreateFileA(
+        &path_buf,
+        .{ .DELETE = 1, .SYNCHRONIZE = 1 },
+        FILE_SHARE_READ,
+        null,
+        .OPEN_EXISTING,
+        .{},
+        null,
+    );
+    if (h_file == INVALID_HANDLE_VALUE) {
+        std.debug.print("[!] CreateFileA Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.CreateFileAFailed;
+    }
+
+    var dispostion_info = FILE_DISPOSITION_INFO{ .DeleteFileA = 1 };
+
+    if (SetFileInformationByHandle(
+        h_file,
+        .FileDispositionInfo,
+        &dispostion_info,
+        @sizeOf(FILE_DISPOSITION_INFO),
+    ) == 0) {
+        std.debug.print("[!] SetFileInformationByHandle Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.SetFileInformationByHandleFailed;
+    }
+
+    _ = CloseHandle(h_file);
 }

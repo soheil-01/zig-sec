@@ -6,4 +6,5 @@ pub fn main() !void {
     std.debug.print("[!] checkMachineResolution: {}\n", .{try sec.anti_vm.checkMachineResolution()});
     std.debug.print("[!] exeDigitsInNameCheck: {}\n", .{try sec.anti_vm.exeDigitsInNameCheck()});
     std.debug.print("[!] checkMachineProcesses: {}\n", .{try sec.anti_vm.checkMachineProcesses()});
+    std.debug.print("[!] checkUserInteraction: {}\n", .{try sec.anti_vm.checkUserInteraction()});
 }

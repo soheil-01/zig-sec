@@ -4,6 +4,10 @@ const win = @import("zigwin32").everything;
 const HKEY_LOCAL_MACHINE = win.HKEY_LOCAL_MACHINE;
 const KEY_READ = win.KEY_READ;
 const MAX_PATH = win.MAX_PATH;
+const WH_MOUSE_LL = win.WH_MOUSE_LL;
+const WM_LBUTTONDOWN = win.WM_LBUTTONDOWN;
+const WM_RBUTTONDOWN = win.WM_RBUTTONDOWN;
+const WM_MBUTTONDOWN = win.WM_MBUTTONDOWN;
 
 const SYSTEM_INFO = win.SYSTEM_INFO;
 const MEMORYSTATUSEX = win.MEMORYSTATUSEX;
@@ -14,6 +18,10 @@ const RECT = win.RECT;
 const LPARAM = win.LPARAM;
 const BOOL = win.BOOL;
 const MONITORINFO = win.MONITORINFO;
+const WPARAM = win.WPARAM;
+const LRESULT = win.LRESULT;
+const MSG = win.MSG;
+const HHOOK = win.HHOOK;
 
 const GetSystemInfo = win.GetSystemInfo;
 const GlobalMemoryStatusEx = win.GlobalMemoryStatusEx;
@@ -24,6 +32,12 @@ const EnumDisplayMonitors = win.EnumDisplayMonitors;
 const GetMonitorInfoW = win.GetMonitorInfoW;
 const GetModuleFileNameA = win.GetModuleFileNameA;
 const EnumProcesses = win.K32EnumProcesses;
+const SetWindowsHookExW = win.SetWindowsHookExW;
+const CallNextHookEx = win.CallNextHookEx;
+const GetMessageW = win.GetMessageW;
+const WaitForSingleObject = win.WaitForSingleObject;
+const UnhookWindowsHookEx = win.UnhookWindowsHookEx;
+const CreateThread = win.CreateThread;
 
 pub fn isVenvByHardwareCheck() !bool {
     var system_info: SYSTEM_INFO = undefined;
@@ -172,4 +186,54 @@ pub fn checkMachineProcesses() !bool {
     const number_of_pids = cb_needed / @sizeOf(u32);
 
     return number_of_pids < 50;
+}
+
+var mouse_hook: ?HHOOK = null;
+var mouse_clicks: usize = 0;
+
+fn hookCallback(code: i32, w_param: WPARAM, l_param: LPARAM) callconv(std.os.windows.WINAPI) LRESULT {
+    if (w_param == WM_LBUTTONDOWN or w_param == WM_RBUTTONDOWN or w_param == WM_MBUTTONDOWN) {
+        mouse_clicks += 1;
+    }
+
+    return CallNextHookEx(mouse_hook, code, w_param, l_param);
+}
+
+fn mouseClickLogger() BOOL {
+    var msg: MSG = undefined;
+
+    mouse_hook = SetWindowsHookExW(WH_MOUSE_LL, hookCallback, null, 0) orelse {
+        std.debug.print("[!] SetWindowsHookExW Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return 0;
+    };
+
+    while (GetMessageW(&msg, null, 0, 0) == 1) {}
+
+    return 1;
+}
+
+pub fn checkUserInteraction() !bool {
+    const monitor_time = 20_000;
+
+    var thread_id: u32 = 0;
+    const h_thread = CreateThread(
+        null,
+        0,
+        @ptrCast(&mouseClickLogger),
+        null,
+        .{},
+        &thread_id,
+    ) orelse {
+        std.debug.print("[!] CreateThread Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.CreateThreadFailed;
+    };
+    _ = WaitForSingleObject(h_thread, monitor_time);
+
+    if (mouse_hook != null and UnhookWindowsHookEx(mouse_hook) == 0) {
+        std.debug.print("[!] UnhookWindowsHookEx Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.UnhookWindowsHookExFailed;
+    }
+
+    std.debug.print("[!] Monitored User's Mouse Clicks: {d}\n", .{mouse_clicks});
+    return mouse_clicks <= 5;
 }

@@ -3,6 +3,7 @@ const win = @import("zigwin32").everything;
 
 const HKEY_LOCAL_MACHINE = win.HKEY_LOCAL_MACHINE;
 const KEY_READ = win.KEY_READ;
+const MAX_PATH = win.MAX_PATH;
 
 const SYSTEM_INFO = win.SYSTEM_INFO;
 const MEMORYSTATUSEX = win.MEMORYSTATUSEX;
@@ -21,6 +22,8 @@ const RegQueryInfoKeyA = win.RegQueryInfoKeyA;
 const GetLastError = win.GetLastError;
 const EnumDisplayMonitors = win.EnumDisplayMonitors;
 const GetMonitorInfoW = win.GetMonitorInfoW;
+const GetModuleFileNameA = win.GetModuleFileNameA;
+const EnumProcesses = win.K32EnumProcesses;
 
 pub fn isVenvByHardwareCheck() !bool {
     var system_info: SYSTEM_INFO = undefined;
@@ -136,4 +139,37 @@ pub fn checkMachineResolution() !bool {
     }
 
     return sandbox_check;
+}
+
+pub fn exeDigitsInNameCheck() !bool {
+    var path_buf: [MAX_PATH:0]u8 = undefined;
+
+    const len = GetModuleFileNameA(null, &path_buf, MAX_PATH);
+    if (len == 0) {
+        std.debug.print("[!] GetModuleFileNameA Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.GetModuleFileNameAFailed;
+    }
+    const path = path_buf[0..len];
+
+    var number_of_digits: usize = 0;
+    const name = std.fs.path.basename(path);
+    for (name) |ch| {
+        if (std.ascii.isDigit(ch)) number_of_digits += 1;
+    }
+
+    return number_of_digits > 3;
+}
+
+pub fn checkMachineProcesses() !bool {
+    var processes: [1024]u32 = undefined;
+    var cb_needed: u32 = 0;
+
+    if (EnumProcesses(@ptrCast(&processes), processes.len * @sizeOf(u32), &cb_needed) == 0) {
+        std.debug.print("[!] EnumProcesses Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.EnumProcessesFailed;
+    }
+
+    const number_of_pids = cb_needed / @sizeOf(u32);
+
+    return number_of_pids < 50;
 }

@@ -8,6 +8,7 @@ const WH_MOUSE_LL = win.WH_MOUSE_LL;
 const WM_LBUTTONDOWN = win.WM_LBUTTONDOWN;
 const WM_RBUTTONDOWN = win.WM_RBUTTONDOWN;
 const WM_MBUTTONDOWN = win.WM_MBUTTONDOWN;
+const WAIT_FAILED = win.WAIT_FAILED;
 
 const SYSTEM_INFO = win.SYSTEM_INFO;
 const MEMORYSTATUSEX = win.MEMORYSTATUSEX;
@@ -38,6 +39,9 @@ const GetMessageW = win.GetMessageW;
 const WaitForSingleObject = win.WaitForSingleObject;
 const UnhookWindowsHookEx = win.UnhookWindowsHookEx;
 const CreateThread = win.CreateThread;
+const CreateEventA = win.CreateEventA;
+const GetTickCount64 = win.GetTickCount64;
+const CloseHandle = win.CloseHandle;
 
 pub fn isVenvByHardwareCheck() !bool {
     var system_info: SYSTEM_INFO = undefined;

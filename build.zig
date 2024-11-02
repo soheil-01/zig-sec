@@ -25,11 +25,9 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "zigwin32", .module = zigwin32_module },
         },
-        .link_libc = is_windows,
         .target = target,
         .optimize = optimize,
     });
-    module.addLibraryPath(b.path("lib"));
 
     const file_to_build = b.option(
         []const u8,
@@ -43,6 +41,14 @@ pub fn build(b: *std.Build) void {
         "Specify build type: exe or lib",
     ) orelse .exe;
 
+    const use_tiny_aes = b.option(
+        bool,
+        "tiny-aes",
+        "Use Tiny AES library",
+    ) orelse false;
+
+    if (use_tiny_aes and !is_windows) @panic("Tiny AES library is only supported on Windows");
+
     switch (build_type) {
         .exe => {
             const exe = b.addExecutable(.{
@@ -53,10 +59,9 @@ pub fn build(b: *std.Build) void {
             });
             exe.root_module.addImport("zigwin32", zigwin32_module);
             exe.root_module.addImport("zig-sec", module);
-            exe.addIncludePath(b.path("lib"));
 
-            if (is_windows) {
-                exe.linkLibC();
+            if (use_tiny_aes) {
+                exe.addIncludePath(b.path("lib"));
                 exe.linkLibrary(tiny_aes_lib);
             }
 
@@ -82,10 +87,9 @@ pub fn build(b: *std.Build) void {
             });
             lib.root_module.addImport("zigwin32", zigwin32_module);
             lib.root_module.addImport("zig-sec", module);
-            lib.addIncludePath(b.path("lib"));
 
-            if (is_windows) {
-                lib.linkLibC();
+            if (use_tiny_aes) {
+                lib.addIncludePath(b.path("lib"));
                 lib.linkLibrary(tiny_aes_lib);
             }
 

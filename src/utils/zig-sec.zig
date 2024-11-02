@@ -9,6 +9,7 @@ pub const payload_encryption = struct {
     pub const xor = @import("payload_encryption/xor.zig");
     pub const rc4 = @import("payload_encryption/rc4.zig");
     pub const bcrypt_aes = @import("payload_encryption/bcrypt_aes.zig");
+    pub const key = @import("payload_encryption/key.zig");
 };
 
 pub const payload_staging = struct {

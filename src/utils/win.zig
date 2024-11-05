@@ -64,9 +64,13 @@ const ExportDirectory = struct {
     number_of_functions: u32,
 };
 
-pub fn getExportDirectory(base_address: [*]const u8) ?ExportDirectory {
-    const dos_header: *const IMAGE_DOS_HEADER = @alignCast(@ptrCast(base_address));
+const NtHeaders = union(enum) {
+    nt_headers_64: *const IMAGE_NT_HEADERS64,
+    nt_headers_32: *const IMAGE_NT_HEADERS32,
+};
 
+pub fn getNtHeaders(base_address: [*]const u8) ?NtHeaders {
+    const dos_header: *const IMAGE_DOS_HEADER = @alignCast(@ptrCast(base_address));
     if (dos_header.e_magic != IMAGE_DOS_SIGNATURE) return null;
 
     const e_lfanew: usize = @intCast(dos_header.e_lfanew);
@@ -75,12 +79,17 @@ pub fn getExportDirectory(base_address: [*]const u8) ?ExportDirectory {
 
     const is_64bit: bool = if (optional_header_magic.* == .NT_OPTIONAL_HDR_MAGIC) true else false;
 
-    var nt_headers_64: *const IMAGE_NT_HEADERS64 = undefined;
-    var nt_headers_32: *const IMAGE_NT_HEADERS32 = undefined;
     const nt_headers_address = base_address + e_lfanew;
-    if (is_64bit) nt_headers_64 = @alignCast(@ptrCast(nt_headers_address)) else nt_headers_32 = @alignCast(@ptrCast(nt_headers_address));
+    return if (is_64bit) .{ .nt_headers_64 = @alignCast(@ptrCast(nt_headers_address)) } else .{ .nt_headers_32 = @alignCast(@ptrCast(nt_headers_address)) };
+}
 
-    const export_directory_rva = if (is_64bit) nt_headers_64.OptionalHeader.DataDirectory[@intFromEnum(IMAGE_DIRECTORY_ENTRY_EXPORT)].VirtualAddress else nt_headers_32.OptionalHeader.DataDirectory[@intFromEnum(IMAGE_DIRECTORY_ENTRY_EXPORT)].VirtualAddress;
+pub fn getExportDirectory(base_address: [*]const u8) ?ExportDirectory {
+    const nt_headers = getNtHeaders(base_address) orelse return null;
+
+    const export_directory_rva = switch (nt_headers) {
+        .nt_headers_64 => |nt_headers_64| nt_headers_64.OptionalHeader.DataDirectory[@intFromEnum(IMAGE_DIRECTORY_ENTRY_EXPORT)].VirtualAddress,
+        .nt_headers_32 => |nt_headers_32| nt_headers_32.OptionalHeader.DataDirectory[@intFromEnum(IMAGE_DIRECTORY_ENTRY_EXPORT)].VirtualAddress,
+    };
     const export_directory: *const IMAGE_EXPORT_DIRECTORY = @alignCast(@ptrCast(base_address + export_directory_rva));
 
     const function_address_array: [*]const u32 = @alignCast(@ptrCast(base_address + @as(usize, @intCast(export_directory.AddressOfFunctions))));

@@ -28,6 +28,10 @@ pub const hook = struct {
     pub const detours = @import("hook/detours.zig");
 };
 
+pub const unhook = struct {
+    pub const disk = @import("unhook/disk.zig");
+};
+
 pub const process = @import("process.zig");
 pub const thread = @import("thread.zig");
 pub const common = @import("common.zig");

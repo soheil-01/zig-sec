@@ -5,6 +5,8 @@ const win = @import("zigwin32").everything;
 const LoadLibraryA = win.LoadLibraryA;
 const GetLastError = win.GetLastError;
 
+const SLEEP_TIME = std.time.ns_per_s * 2;
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -18,7 +20,7 @@ pub fn main() !void {
     const basic_edr_path = args[1];
 
     std.debug.print("[!] Check if NtProtectVirtualMemory is not touched\n", .{});
-    std.time.sleep(std.time.ns_per_s * 40);
+    std.time.sleep(SLEEP_TIME);
 
     _ = LoadLibraryA(basic_edr_path) orelse {
         std.debug.print("[!] LoadLibraryA Failed With Error: {s}\n", .{@tagName(GetLastError())});
@@ -26,10 +28,10 @@ pub fn main() !void {
     };
 
     std.debug.print("[!] Check if NtProtectVirtualMemory is hooked\n", .{});
-    std.time.sleep(std.time.ns_per_s * 40);
+    std.time.sleep(SLEEP_TIME);
 
     try sec.unhook.disk.replaceNtdllTextSection(allocator);
 
     std.debug.print("[!] Check if NtProtectVirtualMemory is unhooked\n", .{});
-    std.time.sleep(std.time.ns_per_s * 40);
+    std.time.sleep(SLEEP_TIME);
 }

@@ -1,6 +1,7 @@
 const std = @import("std");
 const win = @import("zigwin32").everything;
 const windows = @import("../win.zig");
+const common = @import("../common.zig");
 
 const IMAGE_FILE_HEADER = win.IMAGE_FILE_HEADER;
 const IMAGE_SECTION_HEADER = win.IMAGE_SECTION_HEADER;
@@ -8,6 +9,9 @@ const PAGE_PROTECTION_FLAGS = win.PAGE_PROTECTION_FLAGS;
 const HANDLE = win.HANDLE;
 const PVOID = std.os.windows.PVOID;
 const NTSTATUS = std.os.windows.NTSTATUS;
+const OBJECT_ATTRIBUTES = win.OBJECT_ATTRIBUTES;
+const ACCESS_MASK = std.os.windows.ACCESS_MASK;
+const UNICODE_STRING = win.UNICODE_STRING;
 
 const MAX_PATH = win.MAX_PATH;
 const FILE_GENERIC_READ = win.FILE_GENERIC_READ;
@@ -18,6 +22,8 @@ const INVALID_FILE_SIZE: u32 = 0xffffffff;
 const FILE_MAP_READ = win.FILE_MAP_READ;
 const PAGE_EXECUTE_WRITECOPY = win.PAGE_EXECUTE_WRITECOPY;
 const PAGE_EXECUTE_READWRITE = win.PAGE_EXECUTE_READWRITE;
+const OBJ_CASE_INSENSITIVE = win.OBJ_CASE_INSENSITIVE;
+const SECTION_MAP_READ = std.os.windows.SECTION_MAP_READ;
 
 const getModuleHandleReplacement = windows.getModuleHandleReplacement;
 const getDosHeader = windows.getDosHeader;
@@ -30,6 +36,7 @@ const CreateFileMappingA = win.CreateFileMappingA;
 const MapViewOfFile = win.MapViewOfFile;
 const UnmapViewOfFile = win.UnmapViewOfFile;
 const VirtualProtect = win.VirtualProtect;
+const InitializeObjectAttributes = win.InitializeObjectAttributes;
 const GetLastError = win.GetLastError;
 const CloseHandle = win.CloseHandle;
 
@@ -46,22 +53,25 @@ comptime {
     );
 }
 
-extern fn NtProtectVirtualMemory(process_handle: HANDLE, base_address: *PVOID, number_of_bytes_to_protect: *u32, new_access_protection: u32, old_access_protection: *u32) NTSTATUS;
+extern fn NtProtectVirtualMemory(process_handle: HANDLE, base_address: *PVOID, number_of_bytes_to_protect: *u32, new_access_protection: u32, old_access_protection: *u32) callconv(std.os.windows.WINAPI) NTSTATUS;
+
+const NtOpenSection = *const fn (
+    section_handle: *HANDLE,
+    desired_access: ACCESS_MASK,
+    object_attributes: *OBJECT_ATTRIBUTES,
+) NTSTATUS;
 
 pub fn replaceNtdllTextSection(allocator: std.mem.Allocator) !void {
     const h_ntdll = try getModuleHandleReplacement(allocator, "ntdll.dll") orelse return error.FailedToGetNtdll;
 
     const local_ntdll_text = try getNtdllText1(@ptrCast(h_ntdll));
 
-    const unhooked_ntdll = try readNtdll(allocator);
-    defer allocator.free(unhooked_ntdll);
-
-    const unhooked_ntdll_text = try getNtdllText1(unhooked_ntdll.ptr);
-
     var old_protection: u32 = 0;
-    var base_address: *anyopaque = @ptrCast(local_ntdll_text.ptr);
+    var base_address: *anyopaque = @ptrCast(local_ntdll_text);
     var number_of_bytes_to_protect: u32 = @intCast(local_ntdll_text.len);
 
+    // TODO: calling NtProtectVirtualMemory after mapping unhooked ntdll will fail with INVALID_PARAMETER error.
+    // I don't know why.
     const status = NtProtectVirtualMemory(
         std.os.windows.GetCurrentProcess(),
         &base_address,
@@ -73,6 +83,9 @@ pub fn replaceNtdllTextSection(allocator: std.mem.Allocator) !void {
         std.debug.print("[!] NtProtectVirtualMemory Failed With Error: {s}\n", .{@tagName(status)});
         return error.NtProtectVirtualMemoryFailed;
     }
+
+    const unhooked_ntdll = try mapNtdllFromKnownDlls();
+    const unhooked_ntdll_text = try getNtdllText1(unhooked_ntdll);
 
     @memcpy(local_ntdll_text, unhooked_ntdll_text);
 
@@ -101,7 +114,7 @@ fn getNtdllPath(allocator: std.mem.Allocator) ![:0]u8 {
     return ntdll_path;
 }
 
-fn readNtdll(allocator: std.mem.Allocator) ![]u8 {
+pub fn readNtdll(allocator: std.mem.Allocator) ![]u8 {
     const ntdll_path = try getNtdllPath(allocator);
     defer allocator.free(ntdll_path);
 
@@ -137,7 +150,7 @@ fn readNtdll(allocator: std.mem.Allocator) ![]u8 {
     return ntdll_buf;
 }
 
-fn mapNtdll(allocator: std.mem.Allocator) ![*]u8 {
+pub fn mapNtdll(allocator: std.mem.Allocator) ![*]u8 {
     const ntdll_path = try getNtdllPath(allocator);
     defer allocator.free(ntdll_path);
 
@@ -173,7 +186,7 @@ fn mapNtdll(allocator: std.mem.Allocator) ![*]u8 {
     };
     defer _ = CloseHandle(h_section);
 
-    const ntdll_buf: [*]u8 = @ptrCast(MapViewOfFile(
+    const ntdll_buf = MapViewOfFile(
         h_section,
         FILE_MAP_READ,
         0,
@@ -182,9 +195,55 @@ fn mapNtdll(allocator: std.mem.Allocator) ![*]u8 {
     ) orelse {
         std.debug.print("[!] MapViewOfFile Failed With Error: {s}\n", .{@tagName(GetLastError())});
         return error.MapViewOfFileFailed;
-    });
+    };
 
-    return ntdll_buf;
+    return @ptrCast(ntdll_buf);
+}
+
+pub fn mapNtdllFromKnownDlls() ![*]u8 {
+    const nt_open_section = try common.loadFunction(NtOpenSection, "ntdll.dll", "NtOpenSection");
+
+    const ntdll_path = std.unicode.utf8ToUtf16LeStringLiteral("\\KnownDlls\\ntdll.dll");
+
+    var object_name: UNICODE_STRING = .{
+        .Buffer = @constCast(@ptrCast(ntdll_path)),
+        .Length = ntdll_path.len * @sizeOf(u16),
+        .MaximumLength = ntdll_path.len * @sizeOf(u16),
+    };
+
+    var object_attributes = OBJECT_ATTRIBUTES{
+        .Length = @sizeOf(OBJECT_ATTRIBUTES),
+        .ObjectName = &object_name,
+        .Attributes = OBJ_CASE_INSENSITIVE,
+        .RootDirectory = null,
+        .SecurityDescriptor = null,
+        .SecurityQualityOfService = null,
+    };
+
+    var h_section: HANDLE = undefined;
+    const status = nt_open_section.func(
+        &h_section,
+        SECTION_MAP_READ,
+        &object_attributes,
+    );
+    if (status != .SUCCESS) {
+        std.debug.print("[!] NtOpenSection Failed With Error: {s}\n", .{@tagName(status)});
+        return error.NtOpenSectionFailed;
+    }
+    defer _ = CloseHandle(h_section);
+
+    const ntdll_buf = MapViewOfFile(
+        h_section,
+        FILE_MAP_READ,
+        0,
+        0,
+        0,
+    ) orelse {
+        std.debug.print("[!] MapViewOfFile Failed With Error: {s}\n", .{@tagName(GetLastError())});
+        return error.MapViewOfFileFailed;
+    };
+
+    return @ptrCast(ntdll_buf);
 }
 
 fn getNtdllText1(ntdll_base_address: [*]u8) ![]u8 {

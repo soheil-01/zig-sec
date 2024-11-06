@@ -32,7 +32,7 @@ fn HookedNtProtectVirtualMemory(processHandle: HANDLE, baseAddress: PVOID, numbe
     // dump memory + terminate
     if ((newAccessProtection & PAGE_EXECUTE_READWRITE) == PAGE_EXECUTE_READWRITE) {
         std.debug.print("\t\t\t<<<!>>> [DETECTED] PAGE_EXECUTE_READWRITE [DETECTED] <<<!>>> \n", .{});
-        blockExecution(@ptrCast(baseAddress), numberOfBytesToProtect.*, false);
+        blockExecution(@ptrCast(baseAddress), numberOfBytesToProtect.*, true);
     }
 
     // dump memory + continue
@@ -80,7 +80,7 @@ fn uninstallHook() !void {
 
 fn blockExecution(address: [*]const u8, size: u32, terminate: bool) void {
     std.debug.print("\n\t------------------------------------[ MEMORY DUMP ]------------------------------------\n\n", .{});
-    for (0..size) |i| {
+    for (0..@min(size, 256)) |i| {
         if (i % 16 == 0) std.debug.print("\n\t\t", .{});
         std.debug.print(" {X:0>2}", .{address[i]});
     }

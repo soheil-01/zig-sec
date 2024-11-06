@@ -25,7 +25,6 @@ const NTSTATUS = win.NTSTATUS;
 //         \\.intel_syntax noprefix
 //         \\.text
 //         \\.global NtTerminateProcess
-//         \\.extern SW2_GetSyscallNumber
 //         \\NtTerminateProcess:
 //         \\  mov r10, rcx
 //         \\  mov eax, 0x2c
@@ -39,7 +38,7 @@ const NTSTATUS = win.NTSTATUS;
 fn NtTerminateProcess(allocator: std.mem.Allocator, process_handle: HANDLE, exit_status: NTSTATUS) !NTSTATUS {
     const ssn = try sec.syscall.getSyscallNumberSysWhispers(allocator, "NtTerminateProcess");
 
-    return @enumFromInt(sec.syscall.syscallN(
+    return @enumFromInt(sec.syscall.syscall2(
         ssn,
         @intFromPtr(process_handle),
         @intFromEnum(exit_status),

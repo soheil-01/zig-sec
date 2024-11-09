@@ -30,7 +30,7 @@ pub fn main() !void {
     std.debug.print("[!] Check if NtProtectVirtualMemory is hooked\n", .{});
     std.time.sleep(SLEEP_TIME);
 
-    try sec.unhook.disk.replaceNtdllTextSection(allocator);
+    try sec.unhook.replaceNtdllTextSection(allocator);
 
     std.debug.print("[!] Check if NtProtectVirtualMemory is unhooked\n", .{});
     std.time.sleep(SLEEP_TIME);

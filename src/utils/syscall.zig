@@ -28,9 +28,11 @@ pub fn syscall2(ssn: u32, arg1: usize, arg2: usize) usize {
     );
 }
 
-pub fn getSyscallNumberTartarusGate(allocator: std.mem.Allocator, syscall_name: []const u8) !u16 {
+pub fn getSyscallNumberTartarusGate(allocator: std.mem.Allocator, syscall_name: []const u8) !struct { ssn: u16, syscall_address: *anyopaque } {
     const h_ntdll = try win.getModuleHandleReplacement(allocator, "ntdll.dll") orelse return error.NtdllNotFound;
     const function_address = @intFromPtr(try win.getProcAddressReplacement(h_ntdll, syscall_name) orelse return error.SyscallNotFound);
+
+    var ssn: ?u16 = null;
 
     if (@as(*u8, @ptrFromInt(function_address)).* == 0x4c and
         @as(*u8, @ptrFromInt(function_address + 1)).* == 0x8b and
@@ -42,11 +44,10 @@ pub fn getSyscallNumberTartarusGate(allocator: std.mem.Allocator, syscall_name: 
         const high = @as(*u8, @ptrFromInt(function_address + 5)).*;
         const low = @as(*u8, @ptrFromInt(function_address + 4)).*;
 
-        return @as(u16, @intCast(high)) << 8 | @as(u16, @intCast(low));
+        ssn = @as(u16, @intCast(high)) << 8 | @as(u16, @intCast(low));
     }
-
     // if hooked
-    if (@as(*u8, @ptrFromInt(function_address)).* == 0xe9 or @as(*u8, @ptrFromInt(function_address + 3)).* == 0xe9) {
+    else if (@as(*u8, @ptrFromInt(function_address)).* == 0xe9 or @as(*u8, @ptrFromInt(function_address + 3)).* == 0xe9) {
         for (1..256) |offset| {
             const index = offset * 32;
 
@@ -61,7 +62,8 @@ pub fn getSyscallNumberTartarusGate(allocator: std.mem.Allocator, syscall_name: 
                 const high = @as(*u8, @ptrFromInt(function_address + 5 + index)).*;
                 const low = @as(*u8, @ptrFromInt(function_address + 4 + index)).*;
 
-                return (@as(u16, @intCast(high)) << 8 | @as(u16, @intCast(low))) - @as(u16, @intCast(offset));
+                ssn = (@as(u16, @intCast(high)) << 8 | @as(u16, @intCast(low))) - @as(u16, @intCast(offset));
+                break;
             }
 
             // check neighboring syscall up
@@ -75,12 +77,26 @@ pub fn getSyscallNumberTartarusGate(allocator: std.mem.Allocator, syscall_name: 
                 const high = @as(*u8, @ptrFromInt(function_address + 5 - index)).*;
                 const low = @as(*u8, @ptrFromInt(function_address + 4 - index)).*;
 
-                return (@as(u16, @intCast(high)) << 8 | @as(u16, @intCast(low))) + @as(u16, @intCast(offset));
+                ssn = (@as(u16, @intCast(high)) << 8 | @as(u16, @intCast(low))) + @as(u16, @intCast(offset));
+                break;
             }
         }
     }
 
-    return error.SyscallNumberNotFound;
+    if (ssn == null) return error.SyscallNumberNotFound;
+
+    const random_offset = std.crypto.random.intRangeAtMost(u8, 100, 255);
+    const random_address = function_address + random_offset;
+
+    for (0..256) |i| {
+        if (@as(*u8, @ptrFromInt(random_address + i)).* == 0x0f and @as(*u8, @ptrFromInt(random_address + i + 1)).* == 0x05) {
+            const syscall_address: *anyopaque = @ptrFromInt(random_address + i);
+
+            return .{ .ssn = ssn.?, .syscall_address = syscall_address };
+        }
+    }
+
+    return error.SyscallInstructionNotFound;
 }
 
 pub fn getSyscallNumberHellsGate(allocator: std.mem.Allocator, syscall_name: []const u8) !u16 {

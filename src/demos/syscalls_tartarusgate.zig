@@ -36,6 +36,6 @@ pub fn main() !void {
         else => return err,
     };
 
-    const syscall_number2 = try sec.syscall.getSyscallNumberTartarusGate(allocator, "NtProtectVirtualMemory");
-    std.debug.print("[!] NtProtectVirtualMemory Syscall Number Using TartarusGate: 0x{x}\n", .{syscall_number2});
+    const result = try sec.syscall.getSyscallNumberTartarusGate(allocator, "NtProtectVirtualMemory");
+    std.debug.print("[!] Using TartarusGate to resolve NtProtectVirtualMemory, Syscall Number: 0x{x}, Syscall Address: {any}\n", .{ result.ssn, result.syscall_address });
 }

@@ -32,7 +32,7 @@ fn HookedNtProtectVirtualMemory(processHandle: HANDLE, baseAddress: PVOID, numbe
     // dump memory + terminate
     if ((newAccessProtection & PAGE_EXECUTE_READWRITE) == PAGE_EXECUTE_READWRITE) {
         std.debug.print("\t\t\t<<<!>>> [DETECTED] PAGE_EXECUTE_READWRITE [DETECTED] <<<!>>> \n", .{});
-        blockExecution(@ptrCast(baseAddress), numberOfBytesToProtect.*, true);
+        blockExecution(@ptrCast(baseAddress), numberOfBytesToProtect.*, false);
     }
 
     // dump memory + continue

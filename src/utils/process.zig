@@ -1,9 +1,13 @@
 const std = @import("std");
 const win = @import("zigwin32").everything;
 
+const PROCESS_ALL_ACCESS = win.PROCESS_ALL_ACCESS;
+const PROC_THREAD_ATTRIBUTE_PARENT_PROCESS = win.PROC_THREAD_ATTRIBUTE_PARENT_PROCESS;
+const PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY = win.PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY;
+const PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON = 1 << 44;
+
 const HANDLE = win.HANDLE;
 const PROCESSENTRY32 = win.PROCESSENTRY32;
-const PROCESS_ALL_ACCESS = win.PROCESS_ALL_ACCESS;
 const HINSTANCE = win.HINSTANCE;
 const SYSTEM_PROCESS_INFORMATION = win.SYSTEM_PROCESS_INFORMATION;
 const STARTUPINFOA = win.STARTUPINFOA;
@@ -11,7 +15,6 @@ const PROCESS_INFORMATION = win.PROCESS_INFORMATION;
 const PROCESS_CREATION_FLAGS = win.PROCESS_CREATION_FLAGS;
 const STARTUPINFOEXA = win.STARTUPINFOEXA;
 const LPPROC_THREAD_ATTRIBUTE_LIST = win.LPPROC_THREAD_ATTRIBUTE_LIST;
-const PROC_THREAD_ATTRIBUTE_PARENT_PROCESS = win.PROC_THREAD_ATTRIBUTE_PARENT_PROCESS;
 const PROCESS_BASIC_INFORMATION = win.PROCESS_BASIC_INFORMATION;
 const PEB = win.PEB;
 const RTL_USER_PROCESS_PARAMETERS = win.RTL_USER_PROCESS_PARAMETERS;
@@ -310,13 +313,7 @@ pub fn createSuspendedProcess(allocator: std.mem.Allocator, process_name: []cons
 }
 
 // TODO: Got a segmentation fault error due to an unknown reason
-pub fn createPPidSpoofedProcess(allocator: std.mem.Allocator, h_parent_process: HANDLE, process_name: []const u8) !ProcessInfo {
-    const win_dir = try std.process.getEnvVarOwned(allocator, "WINDIR");
-    defer allocator.free(win_dir);
-
-    const path = try std.fmt.allocPrintZ(allocator, "{s}\\System32\\{s}", .{ win_dir, process_name });
-    defer allocator.free(path);
-
+fn createProcessWithAttribute(allocator: std.mem.Allocator, process_path: [*:0]u8, attribute: usize, value: *anyopaque, value_size: usize) !ProcessInfo {
     var thread_attr_list_size: usize = 0;
     _ = InitializeProcThreadAttributeList(
         null,
@@ -351,9 +348,9 @@ pub fn createPPidSpoofedProcess(allocator: std.mem.Allocator, h_parent_process: 
     if (UpdateProcThreadAttribute(
         thread_attr_list_ptr,
         0,
-        PROC_THREAD_ATTRIBUTE_PARENT_PROCESS,
-        h_parent_process,
-        @sizeOf(HANDLE),
+        attribute,
+        value,
+        value_size,
         null,
         null,
     ) == 0) {
@@ -369,7 +366,7 @@ pub fn createPPidSpoofedProcess(allocator: std.mem.Allocator, h_parent_process: 
 
     if (CreateProcessA(
         null,
-        path,
+        process_path,
         null,
         null,
         0,
@@ -388,6 +385,22 @@ pub fn createPPidSpoofedProcess(allocator: std.mem.Allocator, h_parent_process: 
         .process_id = process_info.dwProcessId,
         .h_thread = process_info.hThread.?,
     };
+}
+
+pub fn createPPidSpoofedProcess(allocator: std.mem.Allocator, h_parent_process: HANDLE, process_name: []const u8) !ProcessInfo {
+    const win_dir = try std.process.getEnvVarOwned(allocator, "WINDIR");
+    defer allocator.free(win_dir);
+
+    const path = try std.fmt.allocPrintZ(allocator, "{s}\\System32\\{s}", .{ win_dir, process_name });
+    defer allocator.free(path);
+
+    return createProcessWithAttribute(allocator, path, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, h_parent_process, @sizeOf(HANDLE));
+}
+
+pub fn createProcessWithBlockDllPolicy(allocator: std.mem.Allocator, process_path: [*:0]u8) !ProcessInfo {
+    var policy: u64 = PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON;
+
+    return createProcessWithAttribute(allocator, process_path, PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY, &policy, @sizeOf(u64));
 }
 
 pub fn readFromTargetProcess(h_process: HANDLE, base_address: *anyopaque, buf: *anyopaque, buf_len: usize) !void {

@@ -266,13 +266,7 @@ pub fn mapNtdll(allocator: std.mem.Allocator) ![*]u8 {
 pub fn mapNtdllFromKnownDlls() ![*]u8 {
     const nt_open_section = try common.loadFunction(NtOpenSection, "ntdll.dll", "NtOpenSection");
 
-    const ntdll_path = std.unicode.utf8ToUtf16LeStringLiteral("\\KnownDlls\\ntdll.dll");
-
-    var object_name: UNICODE_STRING = .{
-        .Buffer = @constCast(@ptrCast(ntdll_path)),
-        .Length = ntdll_path.len * @sizeOf(u16),
-        .MaximumLength = ntdll_path.len * @sizeOf(u16),
-    };
+    var object_name = common.initializeUnicodeStringLiteral("\\KnownDlls\\ntdll.dll");
 
     var object_attributes = OBJECT_ATTRIBUTES{
         .Length = @sizeOf(OBJECT_ATTRIBUTES),

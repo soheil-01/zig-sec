@@ -2,6 +2,7 @@ const std = @import("std");
 const win = @import("zigwin32").everything;
 
 const HINSTANCE = win.HINSTANCE;
+const UNICODE_STRING = std.os.windows.UNICODE_STRING;
 
 const GetModuleHandleA = win.GetModuleHandleA;
 const LoadLibraryA = win.LoadLibraryA;
@@ -40,5 +41,15 @@ pub fn loadFunction(comptime T: type, module_name: [:0]const u8, function_name: 
     return .{
         .func = @ptrCast(@constCast(proc_address)),
         .h_module = h_module.?,
+    };
+}
+
+pub fn initializeUnicodeStringLiteral(comptime utf8: []const u8) UNICODE_STRING {
+    const string_utf16 = std.unicode.utf8ToUtf16LeStringLiteral(utf8);
+
+    return .{
+        .Buffer = @constCast(@ptrCast(string_utf16)),
+        .Length = string_utf16.len * @sizeOf(u16),
+        .MaximumLength = string_utf16.len * @sizeOf(u16) + @sizeOf(u16),
     };
 }

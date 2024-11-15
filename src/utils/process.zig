@@ -1,10 +1,58 @@
 const std = @import("std");
 const win = @import("zigwin32").everything;
+const common = @import("common.zig");
 
 const PROCESS_ALL_ACCESS = win.PROCESS_ALL_ACCESS;
+const THREAD_ALL_ACCESS = win.THREAD_ALL_ACCESS;
 const PROC_THREAD_ATTRIBUTE_PARENT_PROCESS = win.PROC_THREAD_ATTRIBUTE_PARENT_PROCESS;
 const PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY = win.PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY;
-const PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON = 1 << 44;
+const PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON: u64 = 1 << 44;
+const PS_ATTRIBUTE_PARENT_PROCESS: u32 = 0x60000;
+const PS_ATTRIBUTE_DEBUG_OBJECT: u32 = 0x60001;
+const PS_ATTRIBUTE_TOKEN: u32 = 0x60002;
+const PS_ATTRIBUTE_CLIENT_ID: u32 = 0x10003;
+const PS_ATTRIBUTE_TEB_ADDRESS: u32 = 0x10004;
+const PS_ATTRIBUTE_IMAGE_NAME: u32 = 0x20005;
+const PS_ATTRIBUTE_IMAGE_INFO: u32 = 0x00006;
+const PS_ATTRIBUTE_MEMORY_RESERVE: u32 = 0x20007;
+const PS_ATTRIBUTE_PRIORITY_CLASS: u32 = 0x20008;
+const PS_ATTRIBUTE_ERROR_MODE: u32 = 0x20009;
+const PS_ATTRIBUTE_STD_HANDLE_INFO: u32 = 0x2000A;
+const PS_ATTRIBUTE_HANDLE_LIST: u32 = 0x2000B;
+const PS_ATTRIBUTE_GROUP_AFFINITY: u32 = 0x3000C;
+const PS_ATTRIBUTE_PREFERRED_NODE: u32 = 0x2000D;
+const PS_ATTRIBUTE_IDEAL_PROCESSOR: u32 = 0x3000E;
+const PS_ATTRIBUTE_UMS_THREAD: u32 = 0x3000F;
+const PS_ATTRIBUTE_MITIGATION_OPTIONS: u32 = 0x20010;
+const PS_ATTRIBUTE_PROTECTION_LEVEL: u32 = 0x60011;
+const PS_ATTRIBUTE_SECURE_PROCESS: u32 = 0x20012;
+const PS_ATTRIBUTE_JOB_LIST: u32 = 0x20013;
+const PS_ATTRIBUTE_CHILD_PROCESS_POLICY: u32 = 0x20014;
+const PS_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY: u32 = 0x20015;
+const PS_ATTRIBUTE_WIN32K_FILTER: u32 = 0x20016;
+const PS_ATTRIBUTE_SAFE_OPEN_PROMPT_ORIGIN_CLAIM: u32 = 0x20017;
+const PS_ATTRIBUTE_BNO_ISOLATION: u32 = 0x20018;
+const PS_ATTRIBUTE_DESKTOP_APP_POLICY: u32 = 0x20019;
+const PS_ATTRIBUTE_CHPE: u32 = 0x6001A;
+const PS_ATTRIBUTE_MITIGATION_AUDIT_OPTIONS: u32 = 0x2001B;
+const PS_ATTRIBUTE_MACHINE_TYPE: u32 = 0x6001C;
+const PS_ATTRIBUTE_COMPONENT_FILTER: u32 = 0x2001D;
+const PS_ATTRIBUTE_ENABLE_OPTIONAL_XSTATE_FEATURES: u32 = 0x3001E;
+
+const RTL_MAX_DRIVE_LETTERS = 32;
+
+const RTL_USER_PROC_PARAMS_NORMALIZED: u32 = 0x00000001;
+const RTL_USER_PROC_PROFILE_USER: u32 = 0x00000002;
+const RTL_USER_PROC_PROFILE_KERNEL: u32 = 0x00000004;
+const RTL_USER_PROC_PROFILE_SERVER: u32 = 0x00000008;
+const RTL_USER_PROC_RESERVE_1MB: u32 = 0x00000020;
+const RTL_USER_PROC_RESERVE_16MB: u32 = 0x00000040;
+const RTL_USER_PROC_CASE_SENSITIVE: u32 = 0x00000080;
+const RTL_USER_PROC_DISABLE_HEAP_DECOMMIT: u32 = 0x00000100;
+const RTL_USER_PROC_DLL_REDIRECTION_LOCAL: u32 = 0x00001000;
+const RTL_USER_PROC_APP_MANIFEST_PRESENT: u32 = 0x00002000;
+const RTL_USER_PROC_IMAGE_KEY_MISSING: u32 = 0x00004000;
+const RTL_USER_PROC_OPTIN_PROCESS: u32 = 0x00020000;
 
 const HANDLE = win.HANDLE;
 const PROCESSENTRY32 = win.PROCESSENTRY32;
@@ -17,7 +65,165 @@ const STARTUPINFOEXA = win.STARTUPINFOEXA;
 const LPPROC_THREAD_ATTRIBUTE_LIST = win.LPPROC_THREAD_ATTRIBUTE_LIST;
 const PROCESS_BASIC_INFORMATION = win.PROCESS_BASIC_INFORMATION;
 const PEB = win.PEB;
-const RTL_USER_PROCESS_PARAMETERS = win.RTL_USER_PROCESS_PARAMETERS;
+const USER_PROCESS_PARAMETERS = win.RTL_USER_PROCESS_PARAMETERS;
+const SIZE_T = std.os.windows.SIZE_T;
+const ULONG_PTR = std.os.windows.ULONG_PTR;
+const PVOID = std.os.windows.PVOID;
+const ULONG = std.os.windows.ULONG;
+const USHORT = std.os.windows.USHORT;
+const ULONGLONG = std.os.windows.ULONGLONG;
+const ACCESS_MASK = std.os.windows.ACCESS_MASK;
+const CURDIR = std.os.windows.CURDIR;
+const WCHAR = std.os.windows.WCHAR;
+const UNICODE_STRING = std.os.windows.UNICODE_STRING;
+const STRING = win.STRING;
+const OBJECT_ATTRIBUTES = win.OBJECT_ATTRIBUTES;
+
+const PS_ATTRIBUTE = extern struct {
+    Attribute: ULONG_PTR,
+    Size: SIZE_T,
+    u: extern union {
+        Value: ULONG_PTR,
+        ValuePtr: PVOID,
+    },
+    ReturnLength: ?*SIZE_T,
+};
+
+const PS_ATTRIBUTE_LIST = extern struct {
+    TotalLength: SIZE_T,
+    Attributes: [3]PS_ATTRIBUTE,
+};
+
+const PS_CREATE_STATE = enum(u32) {
+    PsCreateInitialState,
+    PsCreateFailOnFileOpen,
+    PsCreateFailOnSectionCreate,
+    PsCreateFailExeFormat,
+    PsCreateFailMachineMismatch,
+    PsCreateFailExeName,
+    PsCreateSuccess,
+    PsCreateMaximumStates,
+};
+
+const ProcessInfo = struct {
+    h_process: HANDLE,
+    process_id: u32,
+    h_thread: HANDLE,
+};
+
+const ProcessCreationMode = enum {
+    Suspended,
+    Debugged,
+};
+
+const PS_CREATE_INFO = extern struct {
+    Size: SIZE_T,
+    State: PS_CREATE_STATE,
+    u: extern union {
+        InitState: extern struct {
+            u1: extern union {
+                InitFlags: ULONG,
+                s1: u32,
+            },
+            AdditionalFileAccess: ACCESS_MASK,
+        },
+        FailSection: extern struct {
+            FileHandle: HANDLE,
+        },
+        ExeFormat: extern struct {
+            DllCharacteristics: USHORT,
+        },
+        ExeName: extern struct {
+            IFEOKey: HANDLE,
+        },
+        SuccessState: extern struct {
+            u2: extern union {
+                OutputFlags: ULONG,
+                s2: u32,
+            },
+            FileHandle: HANDLE,
+            SectionHandle: HANDLE,
+            UserProcessParametersNative: ULONGLONG,
+            UserProcessParametersWow64: ULONG,
+            CurrentParameterFlags: ULONG,
+            PebAddressNative: ULONGLONG,
+            PebAddressWow64: ULONG,
+            ManifestAddress: ULONGLONG,
+            ManifestSize: ULONG,
+        },
+    },
+};
+
+const RTL_DRIVE_LETTER_CURDIR = extern struct {
+    Flags: USHORT,
+    Length: USHORT,
+    TimeStamp: ULONG,
+    DosPath: STRING,
+};
+
+const RTL_USER_PROCESS_PARAMETERS = extern struct {
+    MaximumLength: ULONG,
+    Length: ULONG,
+    Flags: ULONG,
+    DebugFlags: ULONG,
+    ConsoleHandle: HANDLE,
+    ConsoleFlags: ULONG,
+    StandardInput: HANDLE,
+    StandardOutput: HANDLE,
+    StandardError: HANDLE,
+    CurrentDirectory: CURDIR,
+    DllPath: UNICODE_STRING,
+    ImagePathName: UNICODE_STRING,
+    CommandLine: UNICODE_STRING,
+    Environment: *WCHAR,
+    StartingX: ULONG,
+    StartingY: ULONG,
+    CountX: ULONG,
+    CountY: ULONG,
+    CountCharsX: ULONG,
+    CountCharsY: ULONG,
+    FillAttribute: ULONG,
+    WindowFlags: ULONG,
+    ShowWindowFlags: ULONG,
+    WindowTitle: UNICODE_STRING,
+    DesktopInfo: UNICODE_STRING,
+    ShellInfo: UNICODE_STRING,
+    RuntimeData: UNICODE_STRING,
+    CurrentDirectories: [RTL_MAX_DRIVE_LETTERS]RTL_DRIVE_LETTER_CURDIR,
+    EnvironmentSize: ULONG_PTR,
+    EnvironmentVersion: ULONG_PTR,
+    PackageDependencyData: PVOID,
+    ProcessGroupId: ULONG,
+    LoaderThreads: ULONG,
+};
+
+const RtlCreateProcessParametersEx = *const fn (
+    pProcessParameters: *?*RTL_USER_PROCESS_PARAMETERS,
+    ImagePathName: *const UNICODE_STRING,
+    DllPath: ?*const UNICODE_STRING,
+    CurrentDirectory: ?*const UNICODE_STRING,
+    CommandLine: ?*const UNICODE_STRING,
+    Environment: ?PVOID,
+    WindowTitle: ?*const UNICODE_STRING,
+    DesktopInfo: ?*const UNICODE_STRING,
+    ShellInfo: ?*const UNICODE_STRING,
+    RuntimeData: ?*const UNICODE_STRING,
+    Flags: ULONG,
+) callconv(std.os.windows.WINAPI) std.os.windows.NTSTATUS;
+
+const NtCreateUserProcess = *const fn (
+    ProcessHandle: *HANDLE,
+    ThreadHandle: *HANDLE,
+    ProcessDesiredAccess: ACCESS_MASK,
+    ThreadDesiredAccess: ACCESS_MASK,
+    ProcessObjectAttributes: ?*OBJECT_ATTRIBUTES,
+    ThreadObjectAttributes: ?*OBJECT_ATTRIBUTES,
+    ProcessFlags: ULONG,
+    ThreadFlags: ULONG,
+    ProcessParameters: ?*RTL_USER_PROCESS_PARAMETERS,
+    CreateInfo: *PS_CREATE_INFO,
+    AttributeList: *PS_ATTRIBUTE_LIST,
+) callconv(std.os.windows.WINAPI) std.os.windows.NTSTATUS;
 
 const CreateToolhelp32Snapshot = win.CreateToolhelp32Snapshot;
 const Process32First = win.Process32First;
@@ -39,12 +245,7 @@ const NtQueryInformationProcess = win.NtQueryInformationProcess;
 const ResumeThread = win.ResumeThread;
 const HeapFree = win.HeapFree;
 const GetProcessHeap = win.GetProcessHeap;
-
-const ProcessInfo = struct {
-    h_process: HANDLE,
-    process_id: u32,
-    h_thread: HANDLE,
-};
+const GetProcessId = win.GetProcessId;
 
 pub fn openProcessByName(process_name: []const u8) !struct { h_process: HANDLE, process_id: u32 } {
     const h_snapshot = CreateToolhelp32Snapshot(.{ .SNAPPROCESS = 1 }, 0) orelse {
@@ -261,11 +462,6 @@ pub fn printProcesses(writer: anytype) !void {
     }
 }
 
-const ProcessCreationMode = enum {
-    Suspended,
-    Debugged,
-};
-
 pub fn createSuspendedProcess(allocator: std.mem.Allocator, process_name: []const u8, mode: ProcessCreationMode) !ProcessInfo {
     const win_dir = try std.process.getEnvVarOwned(allocator, "WINDIR");
     defer allocator.free(win_dir);
@@ -312,7 +508,6 @@ pub fn createSuspendedProcess(allocator: std.mem.Allocator, process_name: []cons
     };
 }
 
-// TODO: Got a segmentation fault error due to an unknown reason
 fn createProcessWithAttribute(allocator: std.mem.Allocator, process_path: [*:0]u8, attribute: usize, value: *anyopaque, value_size: usize) !ProcessInfo {
     var thread_attr_list_size: usize = 0;
     _ = InitializeProcThreadAttributeList(
@@ -387,6 +582,7 @@ fn createProcessWithAttribute(allocator: std.mem.Allocator, process_path: [*:0]u
     };
 }
 
+// TODO: Got a segmentation fault error due to an unknown reason
 pub fn createPPidSpoofedProcess(allocator: std.mem.Allocator, h_parent_process: HANDLE, process_name: []const u8) !ProcessInfo {
     const win_dir = try std.process.getEnvVarOwned(allocator, "WINDIR");
     defer allocator.free(win_dir);
@@ -398,7 +594,7 @@ pub fn createPPidSpoofedProcess(allocator: std.mem.Allocator, h_parent_process: 
 }
 
 pub fn createProcessWithBlockDllPolicy(allocator: std.mem.Allocator, process_path: [*:0]u8) !ProcessInfo {
-    var policy: u64 = PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON;
+    var policy = PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON;
 
     return createProcessWithAttribute(allocator, process_path, PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY, &policy, @sizeOf(u64));
 }
@@ -467,12 +663,12 @@ pub fn createArgSpoofedProcess(allocator: std.mem.Allocator, application_name: [
     );
     defer _ = HeapFree(GetProcessHeap(), .{}, @ptrCast(&peb));
 
-    var process_parameters: RTL_USER_PROCESS_PARAMETERS = undefined;
+    var process_parameters: USER_PROCESS_PARAMETERS = undefined;
     try readFromTargetProcess(
         process_info.h_process,
         @ptrCast(peb.ProcessParameters.?),
         @ptrCast(&process_parameters),
-        @sizeOf(RTL_USER_PROCESS_PARAMETERS) + 0xff,
+        @sizeOf(USER_PROCESS_PARAMETERS) + 0xff,
     );
     defer _ = HeapFree(GetProcessHeap(), .{}, @ptrCast(&process_parameters));
 
@@ -489,7 +685,7 @@ pub fn createArgSpoofedProcess(allocator: std.mem.Allocator, application_name: [
     const new_len: u16 = @as(u16, @intCast(application_name.len)) * @sizeOf(u16);
     try writeToTargetProcess(
         process_info.h_process,
-        @ptrFromInt(@intFromPtr(peb.ProcessParameters.?) + @offsetOf(RTL_USER_PROCESS_PARAMETERS, "CommandLine")),
+        @ptrFromInt(@intFromPtr(peb.ProcessParameters.?) + @offsetOf(USER_PROCESS_PARAMETERS, "CommandLine")),
         @constCast(&new_len),
         @sizeOf(u16),
     );
@@ -497,4 +693,98 @@ pub fn createArgSpoofedProcess(allocator: std.mem.Allocator, application_name: [
     _ = ResumeThread(process_info.h_thread);
 
     return process_info;
+}
+
+pub fn ntCreateUserProcess(comptime target_process: []const u8, comptime target_process_parameters: []const u8, comptime target_process_path: []const u8, h_parent_process: HANDLE) !ProcessInfo {
+    const fnRtlCreateProcessParametersEx = try common.loadFunction(RtlCreateProcessParametersEx, "ntdll.dll", "RtlCreateProcessParametersEx");
+    const fnNtCreateUserProcess = try common.loadFunction(NtCreateUserProcess, "ntdll.dll", "NtCreateUserProcess");
+
+    const image_path = common.initializeUnicodeStringLiteral(target_process);
+    const command_line = common.initializeUnicodeStringLiteral(target_process_parameters);
+    const current_directory = common.initializeUnicodeStringLiteral(target_process_path);
+
+    var process_paramters: ?*RTL_USER_PROCESS_PARAMETERS = null;
+
+    var status = fnRtlCreateProcessParametersEx.func(
+        &process_paramters,
+        &image_path,
+        null,
+        &current_directory,
+        &command_line,
+        null,
+        null,
+        null,
+        null,
+        null,
+        RTL_USER_PROC_PARAMS_NORMALIZED,
+    );
+    if (status != .SUCCESS) {
+        std.debug.print("[!] RtlCreateProcessParametersEx Failed With Error: {s}\n", .{@tagName(status)});
+        return error.RtlCreateProcessParametersExFailed;
+    }
+
+    var block_dll_policy = PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON;
+
+    var attribute_list = PS_ATTRIBUTE_LIST{
+        .TotalLength = @sizeOf(PS_ATTRIBUTE_LIST),
+        .Attributes = .{
+            .{
+                .Attribute = PS_ATTRIBUTE_IMAGE_NAME,
+                .Size = image_path.Length,
+                .u = .{
+                    .ValuePtr = image_path.Buffer.?,
+                },
+                .ReturnLength = null,
+            },
+            .{
+                .Attribute = PS_ATTRIBUTE_PARENT_PROCESS,
+                .Size = @sizeOf(HANDLE),
+                .u = .{
+                    .ValuePtr = h_parent_process,
+                },
+                .ReturnLength = null,
+            },
+            .{
+                .Attribute = PS_ATTRIBUTE_MITIGATION_OPTIONS,
+                .Size = @sizeOf(u64),
+                .u = .{
+                    .ValuePtr = &block_dll_policy,
+                },
+                .ReturnLength = null,
+            },
+        },
+    };
+
+    var create_info = std.mem.zeroes(PS_CREATE_INFO);
+    create_info.Size = @sizeOf(PS_CREATE_INFO);
+    create_info.State = .PsCreateInitialState;
+
+    var h_process: HANDLE = undefined;
+    var h_thread: HANDLE = undefined;
+
+    status = fnNtCreateUserProcess.func(
+        &h_process,
+        &h_thread,
+        @bitCast(PROCESS_ALL_ACCESS),
+        @bitCast(THREAD_ALL_ACCESS),
+        null,
+        null,
+        0,
+        0,
+        process_paramters,
+        &create_info,
+        &attribute_list,
+    );
+    if (status != .SUCCESS) {
+        std.debug.print("[!] NtCreateUserProcess Failed With Error: {s}\n", .{@tagName(status)});
+        return error.NtCreateUserProcessFailed;
+    }
+
+    const process_id = GetProcessId(h_process);
+
+    return .{
+        .h_process = h_process,
+        .process_id = process_id,
+        .h_thread = h_thread,
+    };
 }
